@@ -134,5 +134,20 @@ export function sendMessage(text) {
   }));
 }
 
+// Handle proactive messages from the live WebSocket
+window._onProactiveEngineer = (data) => {
+  messages.value = [
+    ...messages.value,
+    {
+      role: data.role || 'ENGINEER',
+      text: data.text,
+      ts: data.ts || new Date().toISOString(),
+      streaming: false,
+      proactive: true,
+      event: data.event,
+    },
+  ];
+};
+
 // Auto-connect on import
 connectEngineer();

@@ -99,6 +99,14 @@ function processMessage(msg) {
       }
       break;
 
+    case 'engineer_proactive': {
+      // Proactive message from the race engineer — inject into engineer chat
+      if (typeof window._onProactiveEngineer === 'function') {
+        window._onProactiveEngineer(data);
+      }
+      break;
+    }
+
     case 'bridge_disconnected':
       bridgeConnected.value = false;
       iracingConnected.value = false;

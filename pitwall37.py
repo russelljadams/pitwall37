@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import time
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -336,8 +337,15 @@ async def bridge_ws(websocket: WebSocket):
 
             elif msg_type == "setup" or msg_type == "setup_change":
                 bridge_state["live_setup"] = data.get("setup", data)
-                log.info(f"Setup update (UpdateCount: {data.get('setup', data).get('UpdateCount', '?')})")
+                update_count = data.get("setup", data).get("UpdateCount", "?")
+                log.info(f"Setup update (UpdateCount: {update_count})")
                 await broadcast_to_dashboards({"type": "setup_update", "data": data})
+
+                # Proactive: analyze setup changes (only on actual changes, not initial load)
+                if msg_type == "setup_change":
+                    asyncio.create_task(_proactive_engineer("setup_change", {
+                        "update_count": update_count,
+                    }))
 
             elif msg_type == "telemetry":
                 bridge_state["last_telemetry"] = data
@@ -345,8 +353,37 @@ async def bridge_ws(websocket: WebSocket):
 
             elif msg_type == "lap_complete":
                 bridge_state["last_lap"] = data
-                log.info(f"Lap {data.get('lap_number')}: {data.get('lap_time', 0):.3f}s")
+                lap_time = data.get("lap_time", 0)
+                lap_num = data.get("lap_number", 0)
+                log.info(f"Lap {lap_num}: {lap_time:.3f}s")
                 await broadcast_to_dashboards({"type": "lap_complete", "data": data})
+
+                # --- Proactive engineer triggers ---
+                if lap_time > 0:
+                    # Track recent laps for pace degradation detection
+                    _recent_lap_times.append(lap_time)
+                    if len(_recent_lap_times) > 10:
+                        _recent_lap_times.pop(0)
+
+                    # Check for personal best
+                    global _last_proactive_lap
+                    if _last_proactive_lap != lap_num:
+                        _last_proactive_lap = lap_num
+
+                        # PB detection — compare against all previous laps this run
+                        if len(_recent_lap_times) >= 2 and lap_time <= min(_recent_lap_times[:-1]):
+                            asyncio.create_task(_proactive_engineer("personal_best", data))
+                        # Pace degradation — 3+ laps each slower than the last
+                        elif (len(_recent_lap_times) >= 3 and
+                              _recent_lap_times[-1] > _recent_lap_times[-2] > _recent_lap_times[-3]):
+                            asyncio.create_task(_proactive_engineer("pace_degradation", data))
+
+                    # Fuel warning — below 15%
+                    fuel_pct = bridge_state.get("last_telemetry", {}).get("fuel_pct")
+                    if fuel_pct is not None and fuel_pct < 0.15:
+                        asyncio.create_task(_proactive_engineer("fuel_warning", {
+                            "fuel_level": data.get("fuel_level", 0),
+                        }))
 
             elif msg_type == "state":
                 event = data.get("event", "")
@@ -417,9 +454,8 @@ async def live_dashboard(websocket: WebSocket):
 async def engineer_chat(websocket: WebSocket):
     await websocket.accept()
     try:
-        # Lazy import to avoid loading anthropic at startup
-        from engineer import EngineerChat
-        chat = EngineerChat()
+        from engineer import RaceAgent
+        agent = RaceAgent(bridge_state_ref=bridge_state)
 
         while True:
             data = await websocket.receive_json()
@@ -434,18 +470,55 @@ async def engineer_chat(websocket: WebSocket):
             if not context.get("telemetry") and bridge_state.get("last_telemetry"):
                 context["telemetry"] = bridge_state["last_telemetry"]
 
-            # Stream response
-            async for chunk in chat.respond(msg, context):
+            # Stream response — agent may call tools multiple times
+            async for chunk in agent.respond(msg, context):
                 await websocket.send_json({"type": "chunk", "content": chunk})
             await websocket.send_json({"type": "done"})
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
+        log.error(f"Engineer error: {e}")
         try:
             await websocket.send_json({"type": "error", "content": str(e)})
         except Exception:
             pass
+
+
+# --- Proactive Race Engineer ---
+
+_race_agent = None
+_last_proactive_lap = -1
+_recent_lap_times = []
+
+
+def _get_race_agent():
+    """Get or create the shared race agent for proactive monitoring."""
+    global _race_agent
+    if _race_agent is None:
+        from engineer import RaceAgent
+        _race_agent = RaceAgent(bridge_state_ref=bridge_state)
+    return _race_agent
+
+
+async def _proactive_engineer(event_type: str, event_data: dict):
+    """Fire proactive analysis and broadcast to dashboard clients."""
+    try:
+        agent = _get_race_agent()
+        text = await agent.proactive_analysis(event_type, event_data)
+        if text:
+            await broadcast_to_dashboards({
+                "type": "engineer_proactive",
+                "data": {
+                    "role": "ENGINEER",
+                    "text": text,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "event": event_type,
+                    "streaming": False,
+                },
+            })
+    except Exception as e:
+        log.error(f"Proactive engineer error: {e}")
 
 
 # --- Static files (built frontend) ---

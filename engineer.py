@@ -1,432 +1,580 @@
-"""Race Engineer — Claude-powered telemetry analysis and coaching.
-Provides contextual race engineering advice through the PitWall37 dashboard.
+"""PitWall37 Race Agent — Agentic AI race engineer with tools, memory, and proactive monitoring.
+
+This is not a chatbot. This is the head race engineer on the pit wall.
+It has tools to query data, validate setups, search the web, and monitor live sessions.
+It is proactive — it speaks when it has something worth saying.
+It remembers everything across sessions.
 """
 
 import json
 import os
 import sqlite3
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
 
-from setup_model import get_setup_knowledge_for_prompt, compare_setups
+from setup_model import (
+    get_setup_knowledge_for_prompt,
+    compare_setups,
+    validate_setup_change,
+    predict_change_effects,
+    OBSERVED_RANGES,
+)
 
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = DATA_DIR / "pitwall37.db"
-
-# Load setup constraints once at startup
-_SETUP_CONSTRAINTS = get_setup_knowledge_for_prompt()
-
-SYSTEM_PROMPT = """You are the head race engineer for a driver racing Super Formula Lights (Dallara F324) in iRacing. You have deep expertise in open-wheel car setup, telemetry analysis, and driver coaching.
-
-Your role:
-- Analyze telemetry data and provide actionable insights
-- Recommend setup changes with clear explanations of the physics behind each change
-- Coach driving technique based on data patterns
-- Track progress over sessions and identify improvement trends
-- Communicate clearly and concisely, like a professional race engineer on the pit wall
-
-When analyzing data:
-- Reference specific corners, sectors, and track positions
-- Compare against the driver's own best laps, not arbitrary benchmarks
-- Identify the biggest time-gain opportunities first
-- Distinguish between car problems (setup) and driver technique issues
-- Always explain WHY — the physics, the cause-and-effect
-
-Setup knowledge for the Dallara F324:
-- Turbocharged 1.6L 3-cylinder Toyota, ~275hp
-- Front/rear wing angles control aero balance
-- Torsion bar springs front, coil springs rear
-- 2-way dampers (bump/rebound per corner)
-- Front and rear anti-roll bars
-- Limited-slip differential with preload
-- Brake bias adjustable (typical 52-58% front)
-- Cold tire pressures affect grip and temperature distribution
-- Ride height affects aero performance (lower = more downforce, risk of bottoming)
-
-TIRE TELEMETRY — READ THIS CAREFULLY:
-
-The Dallara F324 does NOT have live onboard carcass temp sensors. This is by iRacing design — it simulates real-world data availability. In a real F324, a crew member measures carcass temps with a pyrometer at pit stops. So:
-
-- Carcass temps (tempCL/CM/CR) ONLY update when the car pits. While on track, they stay at whatever value they had at pit exit (often ambient ~51°C if fresh tires).
-- This is the same in EVERY session type — Test Drive, Practice, Hosted, Race. It's a car-level limitation, not a session-level one.
-- Tire wear channels behave the same way — they don't update live on track for this car.
-
-The driver uses Active Reset in test sessions ("suicide practices") — chasing a ghost lap for 60+ minutes, advancing the reset point forward with each completed lap. The tires are NOT resetting to fresh. Active Reset preserves tire state from the snapshot, and the snapshot moves forward. The carcass temp channels just don't report it.
-
-What IS available and real:
-- Surface temps (tempL/M/R): instantaneous IR sensor readings at 60Hz. These DO update live. They swing with corner loading (hot in turns, cool on straights). The telemetry averages these over the last quarter of the lap.
-- Hot pressures: update live. Cold pressure → hot pressure delta shows real tire work. Typical buildup is 124 → 130-140 kPa over a lap.
-
-When analyzing tire data:
-- If you see temps in the 50-80°C range, these are surface temps. They are NORMAL and EXPECTED. Do NOT call them "cold" or suggest they indicate a problem.
-- Use the temp spread across left/middle/right to diagnose camber and pressure — the relative differences still matter even with surface temps.
-- Hot pressures are your most reliable tire data point for setup work.
-- Never recommend tire pressure or camber changes based on absolute surface temp values. Only use relative differences between the three tread zones (inside/middle/outside).
-- Do NOT say "tires are too cold" or "tires aren't at operating temperature." The data doesn't support that conclusion with surface temps.
-
-SETUP CHANGE PROTOCOL:
-When recommending ANY setup change, you MUST:
-1. Check the change against the constraints below — never suggest values outside observed safe ranges
-2. State the side effects — what OTHER parameters will be affected
-3. If the change affects ride height, check the AeroCalculator values in the current setup context
-4. If ride height at speed would approach 0mm, WARN the driver — the car will fail inspection
-5. If you're unsure whether a value is legal, say so — don't guess
-
-If the driver's current setup is provided in context, reference the actual AeroCalculator values (FrontRhAtSpeed, RearRhAtSpeed) when discussing ride height or aero changes.
-
-""" + _SETUP_CONSTRAINTS + """
-
-Keep responses focused and practical. No filler. Every sentence should either inform or recommend."""
+BRAIN_DIR = Path(__file__).parent / "brain"
+CONVERSATION_FILE = DATA_DIR / "engineer_conversation.json"
 
 CLIENT = anthropic.Anthropic()
 MODEL = "claude-sonnet-4-20250514"
 MODEL_FALLBACK = "claude-haiku-4-5-20251001"
 
 
-class EngineerChat:
-    def __init__(self):
-        self.messages = []
+def _load_brain_file(filename: str) -> str:
+    """Load a file from the brain directory."""
+    path = BRAIN_DIR / filename
+    if path.exists():
+        return path.read_text()
+    return f"[File not found: {filename}]"
 
-    async def respond(self, user_message: str, context: dict = None):
-        """Generate engineer response. Yields text chunks for streaming."""
-        # Build context from current session/lap if provided
-        context_text = ""
-        if context:
-            context_text = self._build_context(context)
 
-        # Prepend context to user message if available
-        full_message = user_message
-        if context_text:
-            full_message = f"[Current context]\n{context_text}\n\n[Driver message]\n{user_message}"
+def _build_system_prompt() -> str:
+    """Build the full system prompt from brain files + setup knowledge."""
+    identity = _load_brain_file("IDENTITY.md")
+    operator = _load_brain_file("context/operator.md")
+    setup_knowledge = get_setup_knowledge_for_prompt()
 
-        self.messages.append({"role": "user", "content": full_message})
+    return f"""You are PitWall37 — the head race engineer for Russell Adams (gh0st / a1i3n37).
+You are not an assistant. You are not a chatbot. You are the engineer on the pit wall.
 
-        # Stream response, fall back to Haiku if Sonnet is overloaded
-        model = MODEL
-        try:
-            stream_ctx = CLIENT.messages.stream(
-                model=model,
-                max_tokens=2048,
-                system=SYSTEM_PROMPT,
-                messages=self.messages,
-            )
-            with stream_ctx as stream:
-                full_response = ""
-                for text in stream.text_stream:
-                    full_response += text
-                    yield text
-        except anthropic.APIStatusError as e:
-            if "overloaded" in str(e).lower() or e.status_code == 529:
-                model = MODEL_FALLBACK
-                with CLIENT.messages.stream(
-                    model=model,
-                    max_tokens=2048,
-                    system=SYSTEM_PROMPT,
-                    messages=self.messages,
-                ) as stream:
-                    full_response = ""
-                    for text in stream.text_stream:
-                        full_response += text
-                        yield text
-            else:
-                raise
+{identity}
 
-        self.messages.append({"role": "assistant", "content": full_response})
+{operator}
 
-        # Keep conversation manageable — trim to last 20 exchanges
-        if len(self.messages) > 40:
-            self.messages = self.messages[-40:]
+SETUP CONSTRAINTS AND PHYSICS MODEL:
+{setup_knowledge}
 
-    def _build_context(self, context: dict) -> str:
-        """Build context string from live bridge data or historical session data."""
-        parts = []
+TIRE TELEMETRY RULES (CRITICAL):
+- The F324 has NO live carcass temp sensors. Carcass temps only update at pit stops.
+- Surface temps (tempL/M/R) ARE real — 60Hz IR readings. 50-80°C is NORMAL. Never call them "cold."
+- Use temp spread (L/M/R differences) for camber/pressure diagnosis, not absolute values.
+- Hot pressures are the most reliable tire data point for setup work.
 
-        # --- LIVE DATA (from bridge via frontend) ---
-        live_session = context.get("session")
-        live_telemetry = context.get("telemetry")
-        live_laps = context.get("recent_laps")
-        live_setup = context.get("setup")
+YOU HAVE TOOLS. USE THEM.
+When the driver asks about their history, lap times, setups — don't guess. Query the database.
+When they ask about setup changes — validate against the model.
+When they want to know about racing technique or track guides — search the web.
+When you need context about the project or the car — read the brain files.
 
-        if live_session or live_telemetry or live_setup:
-            parts.append("═══ LIVE SESSION (real-time from iRacing) ═══")
+Be direct. Be data-backed. Push the driver to be better.
+Celebrate progress but never accept "good enough."
+If you don't know something, say so — then use your tools to find out.
 
-            if live_session:
-                parts.append(f"Car: {live_session.get('car', '?')}")
-                parts.append(f"Track: {live_session.get('track', '?')} ({live_session.get('track_config', '')})")
-                parts.append(f"Driver: {live_session.get('driver', '?')}")
+The mission: make this driver an alien. Top 10 Garage61 leaderboards. Beat Tamas Simon.
+"Greatest Race Car Driver Ever. He was built with Claude."
+"""
 
-            if live_telemetry:
-                t = live_telemetry
-                speed = (t.get("speed") or 0) * 3.6
-                parts.append(f"\nLive telemetry snapshot:")
-                parts.append(f"  Speed: {speed:.0f} km/h | RPM: {t.get('rpm', 0):.0f} | Gear: {t.get('gear', 0)}")
-                parts.append(f"  Throttle: {(t.get('throttle') or 0)*100:.0f}% | Brake: {(t.get('brake') or 0)*100:.0f}%")
-                parts.append(f"  Fuel: {t.get('fuel_level', 0):.2f}L ({(t.get('fuel_pct') or 0)*100:.1f}%)")
-                parts.append(f"  Lap: {t.get('lap', 0)} | On track: {t.get('on_track')} | In garage: {t.get('in_garage')}")
 
-            if live_laps:
-                parts.append(f"\nRecent laps ({len(live_laps)}):")
-                for l in live_laps:
-                    time_str = f"{l['time']:.3f}s" if l.get('time') and l['time'] > 0 else "invalid"
-                    delta_str = f" ({l['delta']:+.3f})" if l.get('delta') is not None else ""
-                    pb_str = " ★ PB" if l.get('isPB') else ""
-                    parts.append(f"  Lap {l.get('lap', '?')}: {time_str}{delta_str}{pb_str}")
+# --- Tool Definitions ---
 
-            if live_setup:
-                parts.append(f"\nCurrent car setup:")
-                aero_calc = live_setup.get("TiresAero", {}).get("AeroCalculator", {})
-                if aero_calc:
-                    parts.append("  AeroCalculator (computed):")
-                    for k, v in aero_calc.items():
-                        parts.append(f"    {k}: {v}")
+TOOLS = [
+    {
+        "name": "query_database",
+        "description": "Run a read-only SQL query against the PitWall37 database. Tables: sessions (id, filename, car, track, track_config, track_length_km, session_date, driver_name, total_laps, timed_laps, best_lap_time, avg_lap_time, air_temp, track_temp, setup_json), laps (session_id, lap_number, lap_time, sector_1, sector_2, sector_3, valid, avg_speed_ms, max_speed_ms, fuel_used, telemetry_file), tire_snapshots (session_id, lap_number, corner, temp_left, temp_mid, temp_right, wear_left, wear_mid, wear_right, cold_pressure, hot_pressure).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {
+                    "type": "string",
+                    "description": "SELECT query to run. Must be read-only (SELECT only).",
+                },
+                "purpose": {
+                    "type": "string",
+                    "description": "Brief description of what you're looking for.",
+                },
+            },
+            "required": ["sql"],
+        },
+    },
+    {
+        "name": "get_live_data",
+        "description": "Get the current live data from the bridge — telemetry, setup, session info, recent laps. Use this to see what's happening RIGHT NOW in iRacing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "validate_setup_change",
+        "description": "Validate a proposed setup change against observed safe ranges from 120+ sessions. Returns whether it's safe, any warnings, and predicted side effects.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "parameter": {
+                    "type": "string",
+                    "description": "Parameter name (e.g., 'front_flap_angle_deg', 'rear_spring_rate_nmm', 'brake_bias_pct'). Must match keys in OBSERVED_RANGES.",
+                },
+                "new_value": {
+                    "type": "number",
+                    "description": "Proposed new value.",
+                },
+            },
+            "required": ["parameter", "new_value"],
+        },
+    },
+    {
+        "name": "predict_effects",
+        "description": "Predict what happens when a setup parameter is increased or decreased. Returns physics-based cause-and-effect analysis.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "parameter": {
+                    "type": "string",
+                    "description": "Parameter name from CHANGE_EFFECTS.",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["increase", "decrease"],
+                },
+            },
+            "required": ["parameter", "direction"],
+        },
+    },
+    {
+        "name": "compare_session_setups",
+        "description": "Compare the setups from two sessions. Returns a diff showing what changed and the lap time delta.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "session_id_a": {"type": "string", "description": "First session ID."},
+                "session_id_b": {"type": "string", "description": "Second session ID."},
+            },
+            "required": ["session_id_a", "session_id_b"],
+        },
+    },
+    {
+        "name": "read_brain_file",
+        "description": "Read a file from the PitWall37 brain directory. Available: IDENTITY.md, SHARED-STATE.md, context/operator.md, context/missions.md, context/stack.md, context/skills.md, domain/INDEX.md",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path within the brain/ directory.",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "search_web",
+        "description": "Search the web for racing knowledge, setup guides, track info, techniques, or anything else useful. Use this to find information you don't already know.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query. Be specific — include car name, track, iRacing, etc.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+]
 
-                aero = live_setup.get("TiresAero", {}).get("AeroSetup", {})
-                if aero:
-                    parts.append("  AeroSetup:")
-                    for k, v in aero.items():
-                        parts.append(f"    {k}: {v}")
 
-                # Tire pressures
-                for corner in ["LeftFront", "RightFront", "LeftRear", "RightRear"]:
-                    tire = live_setup.get("TiresAero", {}).get(corner, {})
-                    if tire:
-                        parts.append(f"  {corner}: {tire.get('ColdPressure', '?')} cold, {tire.get('LastHotPressure', '?')} hot")
+# --- Tool Execution ---
 
-                chassis = live_setup.get("Chassis", {})
-                for section_name in ["Front", "LeftFront", "RightFront",
-                                     "Rear", "LeftRear", "RightRear",
-                                     "BrakesInCarMisc", "Differential"]:
-                    section = chassis.get(section_name, {})
-                    if section:
-                        parts.append(f"  {section_name}:")
-                        for k, v in section.items():
-                            parts.append(f"    {k}: {v}")
+def _execute_tool(tool_name: str, tool_input: dict, bridge_state: dict = None) -> str:
+    """Execute a tool and return the result as a string."""
 
-            return "\n".join(parts)
-
-        # --- HISTORICAL DATA (from database by session_id) ---
-        session_id = context.get("session_id")
-        lap_number = context.get("lap_number")
-        compare_id = context.get("compare_session_id")
-
-        if not session_id:
-            return ""
-
+    if tool_name == "query_database":
+        sql = tool_input.get("sql", "")
+        if not sql.strip().upper().startswith("SELECT"):
+            return "Error: Only SELECT queries are allowed."
         try:
             conn = sqlite3.connect(DB_PATH)
             conn.row_factory = sqlite3.Row
-
-            parts.append("═══ PRIMARY SESSION ═══")
-            parts.extend(self._session_context(conn, session_id, lap_number))
-
-            if compare_id:
-                parts.append("")
-                parts.append("═══ COMPARISON SESSION ═══")
-                parts.extend(self._session_context(conn, compare_id, None))
-
-                s1 = conn.execute(
-                    "SELECT setup_json FROM sessions WHERE id = ?", (session_id,)
-                ).fetchone()
-                s2 = conn.execute(
-                    "SELECT setup_json FROM sessions WHERE id = ?", (compare_id,)
-                ).fetchone()
-                if s1 and s2 and s1["setup_json"] and s2["setup_json"]:
-                    setup_a = json.loads(s1["setup_json"])
-                    setup_b = json.loads(s2["setup_json"])
-                    diff = compare_setups(setup_a, setup_b)
-                    parts.append("")
-                    parts.append("═══ SETUP DIFF (primary → comparison) ═══")
-                    parts.append(diff)
-
-                    best_a = conn.execute(
-                        "SELECT MIN(lap_time) as t FROM laps WHERE session_id = ? AND valid = 1 AND lap_time > 0",
-                        (session_id,)
-                    ).fetchone()
-                    best_b = conn.execute(
-                        "SELECT MIN(lap_time) as t FROM laps WHERE session_id = ? AND valid = 1 AND lap_time > 0",
-                        (compare_id,)
-                    ).fetchone()
-                    if best_a and best_b and best_a["t"] and best_b["t"]:
-                        delta = best_b["t"] - best_a["t"]
-                        parts.append(f"\nBest lap delta: {delta:+.3f}s (comparison vs primary)")
-
+            rows = conn.execute(sql).fetchall()
             conn.close()
+            if not rows:
+                return "No results."
+            results = [dict(r) for r in rows]
+            # Truncate if too many results
+            if len(results) > 50:
+                results = results[:50]
+                return json.dumps(results, default=str) + f"\n... ({len(rows)} total, showing first 50)"
+            return json.dumps(results, default=str, indent=2)
         except Exception as e:
-            parts.append(f"[Error loading context: {e}]")
+            return f"SQL Error: {e}"
 
-        return "\n".join(parts)
-
-    def _session_context(self, conn, session_id: str, lap_number: int = None) -> list[str]:
-        """Build context lines for a single session."""
+    elif tool_name == "get_live_data":
+        if not bridge_state:
+            return "Bridge is not connected. No live data available."
         parts = []
-
-        session = conn.execute(
-            "SELECT * FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
-        if session:
-            parts.append(f"Track: {session['track']} ({session['track_config']})")
-            parts.append(f"Date: {session['session_date']}")
-            parts.append(f"Conditions: Air {session['air_temp']}°C, Track {session['track_temp']}°C")
-            parts.append(f"Best lap: {session['best_lap_time']:.3f}s" if session['best_lap_time'] else "No timed laps")
-
-        # All valid laps summary
-        laps = conn.execute("""
-            SELECT lap_number, lap_time, sector_1, sector_2, sector_3,
-                   avg_speed_ms, max_speed_ms, fuel_used
-            FROM laps WHERE session_id = ? AND valid = 1 AND lap_time > 0
-            ORDER BY lap_time
-        """, (session_id,)).fetchall()
-
-        if laps:
-            parts.append(f"\nValid laps ({len(laps)}):")
-            for l in laps:
-                parts.append(
-                    f"  Lap {l['lap_number']}: {l['lap_time']:.3f}s "
-                    f"(S1={l['sector_1']:.3f} S2={l['sector_2']:.3f} S3={l['sector_3']:.3f}) "
-                    f"top {l['max_speed_ms']*3.6:.0f}km/h, fuel {l['fuel_used']:.3f}L"
-                )
-
-        # Specific lap telemetry summary
-        if lap_number:
-            lap = conn.execute(
-                "SELECT * FROM laps WHERE session_id = ? AND lap_number = ?",
-                (session_id, lap_number),
-            ).fetchone()
-
-            if lap and lap["telemetry_file"]:
-                telem_path = DATA_DIR / lap["telemetry_file"]
-                if telem_path.exists():
-                    with open(telem_path) as f:
-                        telem = json.load(f)
-
-                    ch = telem.get("channels", {})
-                    parts.append(f"\nDetailed telemetry for Lap {lap_number}:")
-
-                    speeds = ch.get("speed", [])
-                    if speeds:
-                        speeds_kmh = [s * 3.6 for s in speeds]
-                        parts.append(f"  Speed: min {min(speeds_kmh):.0f}, max {max(speeds_kmh):.0f}, avg {sum(speeds_kmh)/len(speeds_kmh):.0f} km/h")
-
-                    brakes = ch.get("brake", [])
-                    if brakes:
-                        brake_pct = sum(1 for b in brakes if b > 0.05) / len(brakes) * 100
-                        max_brake = max(brakes)
-                        parts.append(f"  Braking: {brake_pct:.1f}% of lap, max pressure {max_brake:.2f}")
-
-                    throttle = ch.get("throttle", [])
-                    if throttle:
-                        full_thr = sum(1 for t in throttle if t > 0.95) / len(throttle) * 100
-                        parts.append(f"  Full throttle: {full_thr:.1f}% of lap")
-
-                    tire_end = telem.get("tire_end", {})
-                    if tire_end:
-                        parts.append("  Tire temps (O/M/I):")
-                        for corner, td in tire_end.items():
-                            temps = td.get("temp", [0, 0, 0])
-                            wear = td.get("wear", [0, 0, 0])
-                            parts.append(
-                                f"    {corner}: {temps[0]:.0f}/{temps[1]:.0f}/{temps[2]:.0f}°C "
-                                f"wear {wear[0]:.1f}/{wear[1]:.1f}/{wear[2]:.1f}%"
-                            )
-
-                    parts.append(
-                        f"  Fuel: {telem.get('fuel_start_l', 0):.2f} → "
-                        f"{telem.get('fuel_end_l', 0):.2f}L "
-                        f"(used {telem.get('fuel_start_l', 0) - telem.get('fuel_end_l', 0):.3f}L)"
-                    )
-
-                    # Ride height data (actual measured, not garage estimate)
-                    rh = telem.get("ride_height", {})
-                    if rh:
-                        parts.append("  Ride height (measured from telemetry):")
-                        f_rh = rh.get("front_mm", {})
-                        r_rh = rh.get("rear_mm", {})
-                        if f_rh.get("avg"):
-                            parts.append(f"    Front: min={f_rh['min']}mm avg={f_rh['avg']}mm max={f_rh['max']}mm")
-                        if r_rh.get("avg"):
-                            parts.append(f"    Rear: min={r_rh['min']}mm avg={r_rh['avg']}mm max={r_rh['max']}mm")
-                        as_f = rh.get("at_speed_front_mm", {})
-                        as_r = rh.get("at_speed_rear_mm", {})
-                        if as_f.get("avg"):
-                            parts.append(f"    At speed (>108km/h): Front min={as_f['min']}mm avg={as_f['avg']}mm | Rear min={as_r.get('min')}mm avg={as_r.get('avg')}mm")
-
-            # Tire snapshots
-            tires = conn.execute("""
-                SELECT * FROM tire_snapshots
-                WHERE session_id = ? AND lap_number = ?
-            """, (session_id, lap_number)).fetchall()
-
-            if tires:
-                parts.append(f"\nTire data for Lap {lap_number}:")
-                for t in tires:
-                    parts.append(
-                        f"  {t['corner']}: temps {t['temp_left']:.0f}/{t['temp_mid']:.0f}/{t['temp_right']:.0f}°C "
-                        f"wear {t['wear_left']:.1f}/{t['wear_mid']:.1f}/{t['wear_right']:.1f}% "
-                        f"pressure {t['cold_pressure']:.0f}→{t['hot_pressure']:.0f} kPa"
-                    )
-
-        # Setup — send full setup
-        if session and session["setup_json"]:
-            setup = json.loads(session["setup_json"])
-            parts.append(f"\nCar setup:")
-
-            aero_calc = setup.get("TiresAero", {}).get("AeroCalculator", {})
-            if aero_calc:
-                parts.append("  AeroCalculator (computed):")
-                for k, v in aero_calc.items():
-                    parts.append(f"    {k}: {v}")
-
+        parts.append(f"Bridge connected: {bridge_state.get('connected', False)}")
+        parts.append(f"iRacing connected: {bridge_state.get('iracing_connected', False)}")
+        si = bridge_state.get("session_info")
+        if si:
+            parts.append(f"Car: {si.get('car')} @ {si.get('track')} ({si.get('track_config', '')})")
+            parts.append(f"Driver: {si.get('driver')}")
+        t = bridge_state.get("last_telemetry")
+        if t:
+            speed = (t.get("speed") or 0) * 3.6
+            parts.append(f"\nLive telemetry:")
+            parts.append(f"  Speed: {speed:.0f} km/h | RPM: {t.get('rpm', 0):.0f} | Gear: {t.get('gear', 0)}")
+            parts.append(f"  Throttle: {(t.get('throttle') or 0)*100:.0f}% | Brake: {(t.get('brake') or 0)*100:.0f}%")
+            parts.append(f"  Fuel: {t.get('fuel_level', 0):.2f}L ({(t.get('fuel_pct') or 0)*100:.1f}%)")
+            parts.append(f"  Lap: {t.get('lap', 0)} | On track: {t.get('on_track')} | In garage: {t.get('in_garage')}")
+            parts.append(f"  Best lap: {t.get('best_lap_time', 0):.3f}s | Last lap: {t.get('last_lap_time', 0):.3f}s")
+        setup = bridge_state.get("live_setup")
+        if setup:
+            parts.append(f"\nLive setup (UpdateCount: {setup.get('UpdateCount', '?')}):")
+            ac = setup.get("TiresAero", {}).get("AeroCalculator", {})
+            if ac:
+                for k, v in ac.items():
+                    parts.append(f"  {k}: {v}")
             aero = setup.get("TiresAero", {}).get("AeroSetup", {})
             if aero:
-                parts.append("  AeroSetup:")
                 for k, v in aero.items():
-                    parts.append(f"    {k}: {v}")
-
+                    parts.append(f"  {k}: {v}")
             chassis = setup.get("Chassis", {})
-            for section_name in ["Front", "LeftFront", "RightFront",
-                                 "Rear", "LeftRear", "RightRear",
-                                 "BrakesInCarMisc", "Differential"]:
-                section = chassis.get(section_name, {})
+            for sec in ["Front", "LeftFront", "RightFront", "Rear", "LeftRear", "RightRear", "BrakesInCarMisc", "Differential"]:
+                section = chassis.get(sec, {})
                 if section:
-                    parts.append(f"  {section_name}:")
+                    parts.append(f"  {sec}:")
                     for k, v in section.items():
                         parts.append(f"    {k}: {v}")
+        last_lap = bridge_state.get("last_lap")
+        if last_lap:
+            parts.append(f"\nLast completed lap: #{last_lap.get('lap_number')} — {last_lap.get('lap_time', 0):.3f}s")
+        return "\n".join(parts) if parts else "No live data available."
 
-        return parts
+    elif tool_name == "validate_setup_change":
+        result = validate_setup_change(
+            tool_input["parameter"],
+            tool_input["new_value"],
+        )
+        return json.dumps(result, default=str, indent=2)
+
+    elif tool_name == "predict_effects":
+        effects = predict_change_effects(
+            tool_input["parameter"],
+            tool_input.get("direction", "increase"),
+        )
+        return "\n".join(effects) if effects else "No known effects for this parameter."
+
+    elif tool_name == "compare_session_setups":
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            s1 = conn.execute("SELECT setup_json, track, best_lap_time, session_date FROM sessions WHERE id = ?",
+                              (tool_input["session_id_a"],)).fetchone()
+            s2 = conn.execute("SELECT setup_json, track, best_lap_time, session_date FROM sessions WHERE id = ?",
+                              (tool_input["session_id_b"],)).fetchone()
+            conn.close()
+            if not s1 or not s2:
+                return "One or both sessions not found."
+            if not s1["setup_json"] or not s2["setup_json"]:
+                return "One or both sessions have no setup data."
+            setup_a = json.loads(s1["setup_json"])
+            setup_b = json.loads(s2["setup_json"])
+            diff = compare_setups(setup_a, setup_b)
+            header = (
+                f"Session A: {s1['track']} {s1['session_date']} (best: {s1['best_lap_time']:.3f}s)\n"
+                f"Session B: {s2['track']} {s2['session_date']} (best: {s2['best_lap_time']:.3f}s)\n"
+            )
+            if s1["best_lap_time"] and s2["best_lap_time"]:
+                delta = s2["best_lap_time"] - s1["best_lap_time"]
+                header += f"Delta: {delta:+.3f}s (B vs A)\n"
+            return header + "\n" + diff
+        except Exception as e:
+            return f"Error comparing: {e}"
+
+    elif tool_name == "read_brain_file":
+        return _load_brain_file(tool_input["path"])
+
+    elif tool_name == "search_web":
+        # Return a marker — the server will intercept this and do the actual search
+        return json.dumps({"_search_request": tool_input["query"]})
+
+    return f"Unknown tool: {tool_name}"
 
 
-def analyze_session(session_id: str) -> str:
-    """Generate a session debrief analysis."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+# --- Conversation Persistence ---
 
-    session = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-    laps = conn.execute("""
-        SELECT * FROM laps WHERE session_id = ? AND valid = 1 AND lap_time > 0
-        ORDER BY lap_time
-    """, (session_id,)).fetchall()
+def _load_conversation() -> list:
+    """Load saved conversation from disk."""
+    if CONVERSATION_FILE.exists():
+        try:
+            data = json.loads(CONVERSATION_FILE.read_text())
+            # Keep last 60 messages max
+            return data[-60:]
+        except Exception:
+            return []
+    return []
 
-    if not session or not laps:
-        return "No valid data for this session."
 
-    context = {
-        "track": session["track"],
-        "date": session["session_date"],
-        "air_temp": session["air_temp"],
-        "track_temp": session["track_temp"],
-        "laps": [dict(l) for l in laps],
-    }
+def _save_conversation(messages: list):
+    """Save conversation to disk."""
+    try:
+        CONVERSATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # Keep last 60 messages
+        CONVERSATION_FILE.write_text(json.dumps(messages[-60:], default=str, indent=2))
+    except Exception:
+        pass
 
-    response = CLIENT.messages.create(
-        model=MODEL,
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": f"Debrief this session:\n{json.dumps(context, indent=2, default=str)}\n\nGive me a concise session debrief: pace analysis, consistency, where the time is, what to work on next."
-        }],
-    )
 
-    conn.close()
-    return response.content[0].text
+# --- The Agent ---
+
+class RaceAgent:
+    """The PitWall37 race engineer agent. Has tools, memory, and opinions."""
+
+    def __init__(self, bridge_state_ref: dict = None):
+        self.bridge_state = bridge_state_ref or {}
+        self.messages = _load_conversation()
+        self.system_prompt = _build_system_prompt()
+
+    async def respond(self, user_message: str, context: dict = None):
+        """Generate an agentic response. Yields text chunks for streaming.
+        The agent may call tools multiple times before responding."""
+
+        # Build context prefix from live data if available
+        context_parts = []
+        if context:
+            session = context.get("session")
+            if session:
+                context_parts.append(f"[Live: {session.get('car', '?')} @ {session.get('track', '?')}]")
+            telemetry = context.get("telemetry")
+            if telemetry:
+                speed = (telemetry.get("speed") or 0) * 3.6
+                context_parts.append(f"[Telemetry: {speed:.0f}km/h Lap:{telemetry.get('lap', 0)} Fuel:{telemetry.get('fuel_level', 0):.1f}L]")
+            recent_laps = context.get("recent_laps")
+            if recent_laps:
+                lap_strs = []
+                for l in recent_laps[:5]:
+                    t = f"{l['time']:.3f}s" if l.get('time') and l['time'] > 0 else "?"
+                    d = f" ({l['delta']:+.3f})" if l.get('delta') is not None else ""
+                    lap_strs.append(f"L{l.get('lap', '?')}:{t}{d}")
+                context_parts.append(f"[Recent laps: {', '.join(lap_strs)}]")
+
+        # Prepend context to message
+        full_message = user_message
+        if context_parts:
+            full_message = "\n".join(context_parts) + "\n\n" + user_message
+
+        self.messages.append({"role": "user", "content": full_message})
+
+        # Agentic loop — keep going until we get a final text response
+        model = MODEL
+        while True:
+            try:
+                response = CLIENT.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    system=self.system_prompt,
+                    tools=TOOLS,
+                    messages=self.messages,
+                )
+            except anthropic.APIStatusError as e:
+                if "overloaded" in str(e).lower() or e.status_code == 529:
+                    model = MODEL_FALLBACK
+                    response = CLIENT.messages.create(
+                        model=model,
+                        max_tokens=4096,
+                        system=self.system_prompt,
+                        tools=TOOLS,
+                        messages=self.messages,
+                    )
+                else:
+                    raise
+
+            # Process response blocks
+            assistant_content = response.content
+            self.messages.append({"role": "assistant", "content": assistant_content})
+
+            # Check if there are tool calls
+            tool_uses = [b for b in assistant_content if b.type == "tool_use"]
+
+            if not tool_uses:
+                # No tool calls — extract text and yield it
+                text_blocks = [b.text for b in assistant_content if b.type == "text"]
+                full_text = "\n".join(text_blocks)
+                # Yield in chunks for streaming effect
+                chunk_size = 12
+                for i in range(0, len(full_text), chunk_size):
+                    yield full_text[i:i + chunk_size]
+                break
+
+            # Execute tools and continue the loop
+            tool_results = []
+            for tool_use in tool_uses:
+                # Yield a status message so the user knows what's happening
+                yield f"\n[Using tool: {tool_use.name}...]\n"
+
+                if tool_use.name == "search_web":
+                    # Web search — yield marker, actual search done by caller
+                    result = _execute_tool(tool_use.name, tool_use.input, self.bridge_state)
+                    parsed = json.loads(result)
+                    if "_search_request" in parsed:
+                        # We can't do web search from here — tell the agent
+                        result = "Web search is not available in this context. Use your existing knowledge or suggest the driver search for specific information."
+                else:
+                    result = _execute_tool(tool_use.name, tool_use.input, self.bridge_state)
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use.id,
+                    "content": result,
+                })
+
+            self.messages.append({"role": "user", "content": tool_results})
+
+            # Check stop reason — if end_turn, we might have text + tool use
+            if response.stop_reason == "end_turn":
+                text_blocks = [b.text for b in assistant_content if b.type == "text"]
+                if text_blocks:
+                    full_text = "\n".join(text_blocks)
+                    chunk_size = 12
+                    for i in range(0, len(full_text), chunk_size):
+                        yield full_text[i:i + chunk_size]
+                    break
+
+        # Save conversation after response
+        _save_conversation(self._serialize_messages())
+
+        # Trim if getting long
+        if len(self.messages) > 60:
+            self.messages = self.messages[-60:]
+
+    async def proactive_analysis(self, event_type: str, event_data: dict):
+        """Generate proactive analysis for events like lap completion or setup changes.
+        Returns the full text response (not streamed)."""
+
+        if event_type == "lap_complete":
+            lap_num = event_data.get("lap_number", 0)
+            lap_time = event_data.get("lap_time", 0)
+            if lap_time <= 0:
+                return None
+
+            prompt = (
+                f"[PROACTIVE — Lap {lap_num} just completed: {lap_time:.3f}s]\n"
+                f"Give a brief 1-2 sentence radio call about this lap. "
+                f"If it's notably fast or slow compared to recent laps, say why. "
+                f"If there's nothing interesting, just confirm the time. Be a real engineer — brief and useful."
+            )
+
+        elif event_type == "setup_change":
+            prompt = (
+                f"[PROACTIVE — Setup change detected (UpdateCount: {event_data.get('update_count', '?')})]\n"
+                f"The driver just changed the setup. Use get_live_data to see the new setup and give a brief opinion."
+            )
+
+        elif event_type == "fuel_warning":
+            fuel = event_data.get("fuel_level", 0)
+            prompt = f"[PROACTIVE — Fuel warning: {fuel:.1f}L remaining]\nBrief fuel status call."
+
+        elif event_type == "pace_degradation":
+            prompt = (
+                f"[PROACTIVE — Pace degradation detected: last 3 laps trending slower]\n"
+                f"Brief radio call — are tires going off, or is the driver losing focus?"
+            )
+
+        elif event_type == "personal_best":
+            lap_time = event_data.get("lap_time", 0)
+            prompt = (
+                f"[PROACTIVE — NEW PERSONAL BEST: {lap_time:.3f}s! Lap {event_data.get('lap_number', '?')}]\n"
+                f"Celebrate this! Brief, excited engineer radio call."
+            )
+
+        else:
+            return None
+
+        self.messages.append({"role": "user", "content": prompt})
+
+        try:
+            response = CLIENT.messages.create(
+                model=MODEL,
+                max_tokens=512,
+                system=self.system_prompt,
+                tools=TOOLS,
+                messages=self.messages,
+            )
+
+            # Handle tool use in proactive mode (simple, one round)
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            if tool_uses:
+                self.messages.append({"role": "assistant", "content": response.content})
+                tool_results = []
+                for tu in tool_uses:
+                    result = _execute_tool(tu.name, tu.input, self.bridge_state)
+                    tool_results.append({"type": "tool_result", "tool_use_id": tu.id, "content": result})
+                self.messages.append({"role": "user", "content": tool_results})
+                response = CLIENT.messages.create(
+                    model=MODEL,
+                    max_tokens=512,
+                    system=self.system_prompt,
+                    messages=self.messages,
+                )
+
+            text = "\n".join(b.text for b in response.content if b.type == "text")
+            self.messages.append({"role": "assistant", "content": response.content})
+            _save_conversation(self._serialize_messages())
+            return text
+
+        except Exception as e:
+            return f"[Engineer error: {e}]"
+
+    def _serialize_messages(self) -> list:
+        """Serialize messages for JSON storage."""
+        serialized = []
+        for msg in self.messages:
+            if isinstance(msg.get("content"), list):
+                # Handle content blocks (tool use/result)
+                blocks = []
+                for block in msg["content"]:
+                    if hasattr(block, "type"):
+                        # Anthropic content block object
+                        if block.type == "text":
+                            blocks.append({"type": "text", "text": block.text})
+                        elif block.type == "tool_use":
+                            blocks.append({
+                                "type": "tool_use",
+                                "id": block.id,
+                                "name": block.name,
+                                "input": block.input,
+                            })
+                    elif isinstance(block, dict):
+                        blocks.append(block)
+                serialized.append({"role": msg["role"], "content": blocks})
+            elif isinstance(msg.get("content"), str):
+                serialized.append(msg)
+            else:
+                # Content block objects from API response
+                content = msg.get("content", [])
+                if hasattr(content, '__iter__') and not isinstance(content, str):
+                    blocks = []
+                    for block in content:
+                        if hasattr(block, "type"):
+                            if block.type == "text":
+                                blocks.append({"type": "text", "text": block.text})
+                            elif block.type == "tool_use":
+                                blocks.append({
+                                    "type": "tool_use",
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": block.input,
+                                })
+                        elif isinstance(block, dict):
+                            blocks.append(block)
+                    serialized.append({"role": msg["role"], "content": blocks})
+                else:
+                    serialized.append(msg)
+        return serialized
+
+
+# Keep backward compat alias
+EngineerChat = RaceAgent
