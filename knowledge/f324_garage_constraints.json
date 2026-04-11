@@ -1,0 +1,498 @@
+{
+  "_meta": {
+    "car": "Dallara F324 (Super Formula Lights)",
+    "car_id": "superformulalights324",
+    "iracing_setup_dir": "superformulalights324",
+    "source": "iRacing official manual V1 (March 2024), garage screenshots, iGPFun F317 guide, community data",
+    "notes": [
+      "Values marked 'confirmed' are read directly from the official manual garage screenshots.",
+      "Values marked 'estimated' are derived from the F317 predecessor, iRacing conventions for similar cars, or community sources.",
+      "iRacing garage uses imperial units internally (inches, lbs/in, deg, psi). Metric display is a UI toggle.",
+      "The garage enforces ranges via sliders — values outside these ranges cannot be entered.",
+      "Tech inspection additionally checks ride height and aero package compatibility.",
+      "Front springs are torsion bars (adjusted by outer diameter). Rear springs are coil springs (adjusted by rate).",
+      "Rear spring rates must be symmetrical (changed in pairs) per homologation rules."
+    ],
+    "updated": "2026-04-10",
+    "confidence": "partial — exact slider endpoints require in-game verification"
+  },
+
+  "tires_aero": {
+    "tire_type": {
+      "options": ["Dry", "Wet"],
+      "notes": "Dry = slick, Wet = treaded. Selected per session conditions."
+    },
+    "cold_pressure": {
+      "unit_imperial": "psi",
+      "unit_metric": "kPa",
+      "baseline_value": 18.0,
+      "baseline_unit": "psi",
+      "min_estimated": 15.0,
+      "max_estimated": 25.0,
+      "step_estimated": 0.1,
+      "notes": "Per-corner adjustment. Baseline is 18.0 psi (124 kPa) all corners. iRacing enforces a minimum cold pressure (historically ~15 psi for open-wheel). Hot pressures typically build to 130-140 kPa.",
+      "confidence": "baseline confirmed, min/max estimated"
+    },
+    "aero_package": {
+      "options": ["Low DF", "Medium DF", "High DF"],
+      "baseline": "Medium DF",
+      "notes": "Changes wing components and their setting limits. Changing this may alter available front flap configs and angle ranges.",
+      "confidence": "confirmed"
+    },
+    "front_flap_config": {
+      "options": ["Low DF", "High DF"],
+      "baseline": "High DF",
+      "notes": "Depends on aero package. High DF aero package requires High DF flap. Low DF requires Low DF flap. Medium DF allows either.",
+      "confidence": "confirmed"
+    },
+    "front_flap_angle": {
+      "unit": "deg",
+      "baseline_value": 9,
+      "min_estimated": 0,
+      "max_estimated": 15,
+      "step_estimated": 1,
+      "notes": "Adjusts front wing upper flap elements. Higher = more front downforce, more drag, aero forward.",
+      "confidence": "baseline confirmed, range estimated from similar iRacing open-wheel cars"
+    },
+    "front_flap_gurney": {
+      "options": ["None", "5mm", "10mm"],
+      "baseline": "None",
+      "notes": "Wicker added to trailing edge of front wing. Significantly increases front downforce and drag. Large aero balance shift forward.",
+      "confidence": "confirmed"
+    },
+    "rear_upper_flap": {
+      "unit": "deg",
+      "baseline_value": 17,
+      "min_estimated": 5,
+      "max_estimated": 25,
+      "step_estimated": 1,
+      "notes": "Main rear wing element. Primary tool for overall downforce level and aero balance. Higher = more rear downforce, more drag.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "rear_beam_wing": {
+      "unit": "deg",
+      "baseline_value": 10,
+      "min_estimated": 0,
+      "max_estimated": 15,
+      "step_estimated": 1,
+      "notes": "Lower rear wing element above axle. Higher = more overall downforce, aero shifts rearward.",
+      "confidence": "baseline confirmed, range estimated"
+    }
+  },
+
+  "chassis_front": {
+    "heave_spring": {
+      "unit_imperial": "lbs/in",
+      "unit_metric": "N/mm",
+      "baseline_value": 0,
+      "baseline_unit": "lbs/in",
+      "min_estimated": 0,
+      "max_estimated": 500,
+      "step_estimated": 25,
+      "notes": "Front third spring. Handles vertical loads without affecting roll. 0 = disconnected. Primarily controls aero platform consistency.",
+      "confidence": "baseline confirmed (0 lbs/in), range estimated"
+    },
+    "heave_perch_offset": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 3.787,
+      "min_estimated_imperial": 2.000,
+      "max_estimated_imperial": 5.000,
+      "step_estimated_imperial": 0.010,
+      "notes": "Preloads heave spring. Decreasing = more preload, adds weight to corner, increases ride height. Increasing = opposite.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "pushrod_length_offset": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": -0.512,
+      "min_estimated_imperial": -1.500,
+      "max_estimated_imperial": 1.500,
+      "step_estimated_imperial": 0.010,
+      "notes": "Adjusts front ride height without affecting spring preload. Positive = raises ride height, negative = lowers. Set after springs and heave spring are configured.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "arb_size": {
+      "options": ["Soft", "Medium", "Stiff", "Disconnected"],
+      "baseline": "Medium",
+      "notes": "Front anti-roll bar diameter. Disconnected removes ARB entirely (reduces understeer but hurts aero in high-speed).",
+      "confidence": "confirmed (options visible in manual)"
+    },
+    "arb_arm_length": {
+      "options": ["Short", "Medium", "Long"],
+      "baseline": "Medium",
+      "notes": "Longer arms = softer ARB assembly, less roll stiffness. Shorter = stiffer, more understeer.",
+      "confidence": "baseline confirmed, options estimated"
+    },
+    "arb_blades": {
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "baseline_value": "2-3",
+      "notes": "Blade orientation. 1 = softest, 5 = stiffest. Adjustable in-car via F8 black box 'FARB' setting.",
+      "confidence": "confirmed (range 1-5 stated in manual text, baseline visible)"
+    }
+  },
+
+  "chassis_front_corners": {
+    "ride_height": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 0.640,
+      "baseline_value_metric": 16.3,
+      "min_estimated_imperial": 0.400,
+      "max_estimated_imperial": 1.500,
+      "min_estimated_metric": 10.2,
+      "max_estimated_metric": 38.1,
+      "step_estimated_imperial": 0.010,
+      "notes": "Reference point on chassis to ground. Lower = more aero but risk of bottoming. iGPFun recommends front ~15-20mm. Manual says 'run front as low as possible'. Tech inspection enforces a minimum.",
+      "confidence": "baseline confirmed, range estimated from iGPFun guide"
+    },
+    "torsion_bar_preload": {
+      "unit": "turns",
+      "baseline_value": -0.025,
+      "min_estimated": -1.000,
+      "max_estimated": 1.000,
+      "step_estimated": 0.025,
+      "notes": "Preload on front torsion bar. Negative = more preload, more weight on corner, higher ride height at that corner. Adjust in pairs (L/R) to avoid crossweight changes.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "torsion_bar_od": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 0.557,
+      "baseline_value_metric": 14.1,
+      "min_estimated_imperial": 0.400,
+      "max_estimated_imperial": 0.750,
+      "step_estimated_imperial": 0.010,
+      "notes": "Front torsion bar outer diameter = front spring stiffness. Larger = stiffer. Stiffness proportional to d^4. Per-corner adjustment.",
+      "confidence": "baseline confirmed, range estimated from F317/similar cars"
+    },
+    "comp_damping": {
+      "unit": "clicks",
+      "baseline_value": 5,
+      "min_estimated": 1,
+      "max_estimated": 12,
+      "step": 1,
+      "notes": "Front compression damping. Higher = more resistance to compression, faster weight transfer, more understeer.",
+      "confidence": "baseline confirmed, range estimated from similar iRacing cars"
+    },
+    "rbd_damping": {
+      "unit": "clicks",
+      "baseline_value": 3,
+      "min_estimated": 1,
+      "max_estimated": 12,
+      "step": 1,
+      "notes": "Front rebound damping. Higher = more resistance to extension, better aero control but can cause wheel to lose contact.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "camber": {
+      "unit": "deg",
+      "baseline_value": null,
+      "baseline_note": "Value not fully visible in manual screenshot, but rear shows -2.4 deg",
+      "min_estimated": -4.0,
+      "max_estimated": 0.0,
+      "step_estimated": 0.1,
+      "notes": "Negative camber desired on all four wheels. More negative = more cornering force but less braking grip. Per-corner adjustment.",
+      "typical_competitive_range": [-3.5, -2.0],
+      "confidence": "range estimated, typical values from community"
+    },
+    "toe_in": {
+      "unit_imperial": "1/X in",
+      "unit_metric": "mm",
+      "baseline_value": "-2/32",
+      "baseline_note": "Displayed as fraction of inches. -2/32 = toe-out",
+      "min_estimated_32nds": -5,
+      "max_estimated_32nds": 5,
+      "notes": "Negative = toe-out (faster turn-in response, less stable straight). Positive = toe-in (more stable, sluggish response). Per-corner.",
+      "confidence": "baseline confirmed, range estimated"
+    }
+  },
+
+  "chassis_rear_corners": {
+    "spring_perch_offset": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 4.142,
+      "min_estimated_imperial": 2.000,
+      "max_estimated_imperial": 6.000,
+      "step_estimated_imperial": 0.010,
+      "notes": "Rear spring preload. Decreasing = more preload, more weight on corner, higher ride height. Adjust in pairs.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "spring_rate": {
+      "unit_imperial": "lbs/in",
+      "unit_metric": "N/mm",
+      "baseline_value_imperial": 850,
+      "baseline_value_metric": 148.9,
+      "min_estimated_imperial": 400,
+      "max_estimated_imperial": 1400,
+      "step_estimated_imperial": 25,
+      "notes": "Rear coil spring rate. Must be symmetrical (L/R same). Stiffer = better aero platform, less mechanical grip. Softer = more grip, more body roll.",
+      "confidence": "baseline confirmed (850 lbs/in), range estimated"
+    },
+    "comp_damping": {
+      "unit": "clicks",
+      "baseline_value": 6,
+      "min_estimated": 1,
+      "max_estimated": 12,
+      "step": 1,
+      "notes": "Rear compression damping. Higher = more resistance, more understeer on throttle application.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "rbd_damping": {
+      "unit": "clicks",
+      "baseline_value": 8,
+      "min_estimated": 1,
+      "max_estimated": 12,
+      "step": 1,
+      "notes": "Rear rebound damping.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "camber": {
+      "unit": "deg",
+      "baseline_value": -2.4,
+      "min_estimated": -4.0,
+      "max_estimated": 0.0,
+      "step_estimated": 0.1,
+      "notes": "Rear camber. More negative = more cornering stability, less braking stability. Per-corner adjustment.",
+      "typical_competitive_range": [-3.0, -1.5],
+      "confidence": "baseline confirmed (-2.4 deg), range estimated"
+    },
+    "toe_in": {
+      "unit_imperial": "1/X in",
+      "baseline_value": "+1/32",
+      "min_estimated_32nds": -3,
+      "max_estimated_32nds": 5,
+      "notes": "Positive = toe-in (more straight-line stability). Negative = toe-out (better direction change). Per-corner.",
+      "confidence": "baseline confirmed (+1/32), range estimated"
+    }
+  },
+
+  "chassis_rear": {
+    "ride_height": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 1.496,
+      "baseline_value_metric": 38.0,
+      "min_estimated_imperial": 0.800,
+      "max_estimated_imperial": 2.500,
+      "min_estimated_metric": 20.3,
+      "max_estimated_metric": 63.5,
+      "step_estimated_imperial": 0.010,
+      "notes": "Rear ride height. Higher than front creates positive rake. iGPFun recommends rear 10-20mm higher than front.",
+      "confidence": "baseline confirmed (1.496 in), range estimated"
+    },
+    "third_spring": {
+      "unit_imperial": "lbs/in",
+      "unit_metric": "N/mm",
+      "baseline_value": 0,
+      "baseline_unit": "lbs/in",
+      "min_estimated": 0,
+      "max_estimated": 500,
+      "step_estimated": 25,
+      "notes": "Rear third/heave spring. Controls vertical movement without affecting roll. 0 = disconnected. Important for controlling rear ride height under aero load.",
+      "confidence": "baseline confirmed (0 lbs/in), range estimated"
+    },
+    "third_perch_offset": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 4.016,
+      "min_estimated_imperial": 2.000,
+      "max_estimated_imperial": 6.000,
+      "step_estimated_imperial": 0.010,
+      "notes": "Rear third spring preload. Adjusts overall rear ride height.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "pushrod_length_offset": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 1.220,
+      "min_estimated_imperial": -1.500,
+      "max_estimated_imperial": 2.500,
+      "step_estimated_imperial": 0.010,
+      "notes": "Adjusts rear ride height without affecting spring preload. Positive = raises, negative = lowers.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "arb_size": {
+      "options": ["Soft", "Medium", "Stiff", "Disconnected"],
+      "baseline": "Soft",
+      "notes": "Rear anti-roll bar. Affects rear roll stiffness and oversteer/understeer balance.",
+      "confidence": "baseline confirmed"
+    },
+    "arb_arm_length": {
+      "options": ["Position 1", "Position 2", "Position 3"],
+      "baseline": "Position 1",
+      "notes": "Rear ARB arm length. Higher positions may represent longer/softer arms.",
+      "confidence": "baseline confirmed, position naming from screenshot"
+    }
+  },
+
+  "brakes_incar_misc": {
+    "front_master_cylinder": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 0.811,
+      "baseline_value_metric": 20.6,
+      "min_estimated_imperial": 0.700,
+      "max_estimated_imperial": 1.100,
+      "step_estimated_imperial": 0.010,
+      "notes": "Larger = less front line pressure = rearward bias shift, more pedal effort. Smaller = more front pressure = forward bias shift.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "rear_master_cylinder": {
+      "unit_imperial": "in",
+      "unit_metric": "mm",
+      "baseline_value_imperial": 0.811,
+      "baseline_value_metric": 20.6,
+      "min_estimated_imperial": 0.700,
+      "max_estimated_imperial": 1.100,
+      "step_estimated_imperial": 0.010,
+      "notes": "Larger = less rear line pressure. Smaller = more rear pressure.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "brake_pressure_bias": {
+      "unit": "%",
+      "baseline_value": 57.0,
+      "min_estimated": 40.0,
+      "max_estimated": 70.0,
+      "step_estimated": 0.1,
+      "notes": "Percentage of brake pressure to front wheels. Adjustable in-car. Manual says typical 52-58% (from engineer.py system prompt). Braking Lab recommends 56-58% starting point.",
+      "typical_competitive_range": [52.0, 60.0],
+      "confidence": "baseline confirmed (57.0%), range estimated"
+    },
+    "fuel_level": {
+      "unit": "gal",
+      "baseline_value": 5.6,
+      "min_estimated": 0.5,
+      "max_estimated": 10.0,
+      "step_estimated": 0.1,
+      "notes": "Fuel load in gallons.",
+      "confidence": "baseline confirmed, range estimated"
+    },
+    "cross_weight": {
+      "unit": "%",
+      "baseline_value": 50.0,
+      "min_estimated": 45.0,
+      "max_estimated": 55.0,
+      "step_estimated": 0.1,
+      "notes": "Percentage of weight on RF+LR diagonal. 50% = balanced. Higher = understeer in LH turns, oversteer in RH. Adjusted indirectly via spring preloads.",
+      "confidence": "baseline confirmed (50.0%), range estimated"
+    },
+    "gear_stack": {
+      "options": ["Short", "Medium Short", "Medium", "Medium Long", "Long"],
+      "baseline": "Medium",
+      "notes": "Five fixed gear stack options. Shorter = better acceleration, lower top speed. Longer = higher top speed, less acceleration. Top speed shown in garage (baseline shows 163.0 mph).",
+      "confidence": "confirmed (5 options stated in manual text, baseline visible)"
+    }
+  },
+
+  "differential": {
+    "ramp_angles": {
+      "unit": "coast/power drive",
+      "baseline_value": "45 coast/80 drive",
+      "options_coast_estimated": [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90],
+      "options_power_estimated": [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90],
+      "notes": "Lower angle = more locking force. Coast (decel): lower = more understeer. Power (accel): lower = more oversteer on exit, less understeer. Values are independent.",
+      "confidence": "baseline confirmed, option list estimated"
+    },
+    "clutch_friction_faces": {
+      "unit": "count",
+      "baseline_value": 8,
+      "min_estimated": 2,
+      "max_estimated": 16,
+      "step_estimated": 2,
+      "notes": "Multiplies locking force. More faces = more locking. Higher = more understeer off-throttle entering corners, more oversteer on exit.",
+      "confidence": "baseline confirmed (8), range estimated"
+    },
+    "preload": {
+      "unit_imperial": "ft-lbs",
+      "unit_metric": "Nm",
+      "baseline_value_imperial": 15,
+      "baseline_value_metric": 20.3,
+      "min_estimated_imperial": 0,
+      "max_estimated_imperial": 50,
+      "step_estimated_imperial": 1,
+      "notes": "Static locking force always present. More preload = more understeer under braking, more oversteer on throttle. Less = opposite.",
+      "confidence": "baseline confirmed (15 ft-lbs), range estimated"
+    }
+  },
+
+  "unit_conversions": {
+    "pressure": "1 psi = 6.895 kPa",
+    "length": "1 in = 25.4 mm",
+    "spring_rate": "1 lbs/in = 0.1751 N/mm",
+    "torque": "1 ft-lb = 1.356 Nm",
+    "speed": "1 mph = 1.609 km/h"
+  },
+
+  "tech_inspection_notes": [
+    "Setup must pass tech inspection for the selected track type.",
+    "Baseline setup passes all tracks. Track-specific setups are fitted for their track category.",
+    "Loading a setup from a different track type may fail inspection — usually ride height is the issue.",
+    "If tech fails, adjust ride height using P-rod Length Offset at either end.",
+    "Positive P-rod offset = raises ride height; negative = lowers it.",
+    "Aero package compatibility: High DF flap cannot be used with Low DF package and vice versa.",
+    "Rear spring rates must be symmetrical (same L/R)."
+  ],
+
+  "baseline_setup_summary": {
+    "description": "Default 'baseline' setup values read from official manual screenshots (Fuji baseline, imperial units)",
+    "aero": {
+      "package": "Medium DF",
+      "front_flap_config": "High DF",
+      "front_flap_angle_deg": 9,
+      "front_flap_gurney": "None",
+      "rear_upper_flap_deg": 17,
+      "rear_beam_wing_deg": 10
+    },
+    "front": {
+      "heave_spring_lbs_in": 0,
+      "heave_perch_offset_in": 3.787,
+      "pushrod_length_offset_in": -0.512,
+      "arb_size": "Medium",
+      "arb_arm_length": "Medium",
+      "arb_blades": "2-3"
+    },
+    "front_corners": {
+      "ride_height_in": 0.640,
+      "torsion_bar_preload_turns": -0.025,
+      "torsion_bar_od_in": 0.557,
+      "comp_damping_clicks": 5,
+      "rbd_damping_clicks": 3,
+      "toe_in": "-2/32"
+    },
+    "rear_corners": {
+      "spring_perch_offset_in": 4.142,
+      "spring_rate_lbs_in": 850,
+      "comp_damping_clicks": 6,
+      "rbd_damping_clicks": 8,
+      "camber_deg": -2.4,
+      "toe_in": "+1/32"
+    },
+    "rear": {
+      "ride_height_in": 1.496,
+      "third_spring_lbs_in": 0,
+      "third_perch_offset_in": 4.016,
+      "pushrod_length_offset_in": 1.220,
+      "arb_size": "Soft",
+      "arb_arm_length": "Position 1"
+    },
+    "brakes_misc": {
+      "front_master_cyl_in": 0.811,
+      "rear_master_cyl_in": 0.811,
+      "brake_pressure_bias_pct": 57.0,
+      "fuel_level_gal": 5.6,
+      "cross_weight_pct": 50.0,
+      "gear_stack": "Medium"
+    },
+    "differential": {
+      "ramp_angles": "45 coast/80 drive",
+      "clutch_friction_faces": 8,
+      "preload_ft_lbs": 15
+    },
+    "tires": {
+      "cold_pressure_psi_all": 18.0
+    }
+  }
+}

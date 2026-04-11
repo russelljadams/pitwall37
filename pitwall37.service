@@ -1,0 +1,15 @@
+[Unit]
+Description=PitWall37 Race Engineer Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=gh0st
+WorkingDirectory=/home/gh0st/projects/pitwall37
+ExecStart=/home/gh0st/projects/pitwall37/venv/bin/uvicorn pitwall37:app --host 0.0.0.0 --port 3737
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
