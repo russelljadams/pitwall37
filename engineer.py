@@ -139,9 +139,73 @@ class EngineerChat:
             self.messages = self.messages[-40:]
 
     def _build_context(self, context: dict) -> str:
-        """Build context string from session/lap data.
-        Supports comparing two sessions when compare_session_id is provided."""
+        """Build context string from live bridge data or historical session data."""
         parts = []
+
+        # --- LIVE DATA (from bridge via frontend) ---
+        live_session = context.get("session")
+        live_telemetry = context.get("telemetry")
+        live_laps = context.get("recent_laps")
+        live_setup = context.get("setup")
+
+        if live_session or live_telemetry or live_setup:
+            parts.append("═══ LIVE SESSION (real-time from iRacing) ═══")
+
+            if live_session:
+                parts.append(f"Car: {live_session.get('car', '?')}")
+                parts.append(f"Track: {live_session.get('track', '?')} ({live_session.get('track_config', '')})")
+                parts.append(f"Driver: {live_session.get('driver', '?')}")
+
+            if live_telemetry:
+                t = live_telemetry
+                speed = (t.get("speed") or 0) * 3.6
+                parts.append(f"\nLive telemetry snapshot:")
+                parts.append(f"  Speed: {speed:.0f} km/h | RPM: {t.get('rpm', 0):.0f} | Gear: {t.get('gear', 0)}")
+                parts.append(f"  Throttle: {(t.get('throttle') or 0)*100:.0f}% | Brake: {(t.get('brake') or 0)*100:.0f}%")
+                parts.append(f"  Fuel: {t.get('fuel_level', 0):.2f}L ({(t.get('fuel_pct') or 0)*100:.1f}%)")
+                parts.append(f"  Lap: {t.get('lap', 0)} | On track: {t.get('on_track')} | In garage: {t.get('in_garage')}")
+
+            if live_laps:
+                parts.append(f"\nRecent laps ({len(live_laps)}):")
+                for l in live_laps:
+                    time_str = f"{l['time']:.3f}s" if l.get('time') and l['time'] > 0 else "invalid"
+                    delta_str = f" ({l['delta']:+.3f})" if l.get('delta') is not None else ""
+                    pb_str = " ★ PB" if l.get('isPB') else ""
+                    parts.append(f"  Lap {l.get('lap', '?')}: {time_str}{delta_str}{pb_str}")
+
+            if live_setup:
+                parts.append(f"\nCurrent car setup:")
+                aero_calc = live_setup.get("TiresAero", {}).get("AeroCalculator", {})
+                if aero_calc:
+                    parts.append("  AeroCalculator (computed):")
+                    for k, v in aero_calc.items():
+                        parts.append(f"    {k}: {v}")
+
+                aero = live_setup.get("TiresAero", {}).get("AeroSetup", {})
+                if aero:
+                    parts.append("  AeroSetup:")
+                    for k, v in aero.items():
+                        parts.append(f"    {k}: {v}")
+
+                # Tire pressures
+                for corner in ["LeftFront", "RightFront", "LeftRear", "RightRear"]:
+                    tire = live_setup.get("TiresAero", {}).get(corner, {})
+                    if tire:
+                        parts.append(f"  {corner}: {tire.get('ColdPressure', '?')} cold, {tire.get('LastHotPressure', '?')} hot")
+
+                chassis = live_setup.get("Chassis", {})
+                for section_name in ["Front", "LeftFront", "RightFront",
+                                     "Rear", "LeftRear", "RightRear",
+                                     "BrakesInCarMisc", "Differential"]:
+                    section = chassis.get(section_name, {})
+                    if section:
+                        parts.append(f"  {section_name}:")
+                        for k, v in section.items():
+                            parts.append(f"    {k}: {v}")
+
+            return "\n".join(parts)
+
+        # --- HISTORICAL DATA (from database by session_id) ---
         session_id = context.get("session_id")
         lap_number = context.get("lap_number")
         compare_id = context.get("compare_session_id")
@@ -153,17 +217,14 @@ class EngineerChat:
             conn = sqlite3.connect(DB_PATH)
             conn.row_factory = sqlite3.Row
 
-            # Build primary session context
             parts.append("═══ PRIMARY SESSION ═══")
             parts.extend(self._session_context(conn, session_id, lap_number))
 
-            # Build comparison session if requested
             if compare_id:
                 parts.append("")
                 parts.append("═══ COMPARISON SESSION ═══")
                 parts.extend(self._session_context(conn, compare_id, None))
 
-                # Setup diff
                 s1 = conn.execute(
                     "SELECT setup_json FROM sessions WHERE id = ?", (session_id,)
                 ).fetchone()
@@ -178,7 +239,6 @@ class EngineerChat:
                     parts.append("═══ SETUP DIFF (primary → comparison) ═══")
                     parts.append(diff)
 
-                    # Lap time comparison
                     best_a = conn.execute(
                         "SELECT MIN(lap_time) as t FROM laps WHERE session_id = ? AND valid = 1 AND lap_time > 0",
                         (session_id,)

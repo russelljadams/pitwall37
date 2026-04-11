@@ -426,6 +426,14 @@ async def engineer_chat(websocket: WebSocket):
             msg = data.get("message", "")
             context = data.get("context", {})
 
+            # Inject server-side bridge state if frontend didn't provide it
+            if not context.get("session") and bridge_state.get("session_info"):
+                context["session"] = bridge_state["session_info"]
+            if not context.get("setup") and bridge_state.get("live_setup"):
+                context["setup"] = bridge_state["live_setup"]
+            if not context.get("telemetry") and bridge_state.get("last_telemetry"):
+                context["telemetry"] = bridge_state["last_telemetry"]
+
             # Stream response
             async for chunk in chat.respond(msg, context):
                 await websocket.send_json({"type": "chunk", "content": chunk})
