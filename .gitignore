@@ -12,6 +12,10 @@ data/pitwall37.db
 data/pitwall37.db.bak
 data/setups/
 
+# Node
+app/node_modules/
+app/dist/
+
 # IDE
 .vscode/
 .idea/

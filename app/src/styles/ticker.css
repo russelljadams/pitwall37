@@ -1,0 +1,94 @@
+/* === Lap Ticker Panel === */
+
+.ticker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 !important;
+}
+
+.ticker-empty {
+  padding: 32px 14px;
+  text-align: center;
+  font-family: var(--pw-font-data);
+  font-size: 12px;
+  color: var(--pw-text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ticker-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  gap: 10px;
+  border-bottom: 1px solid var(--pw-border);
+  font-family: var(--pw-font-data);
+  font-size: 13px;
+  transition: background 150ms ease;
+}
+
+.ticker-row:hover {
+  background: var(--pw-surface-2);
+}
+
+/* New lap slide-in animation */
+.ticker-row--new {
+  animation: ticker-slide-in 200ms ease-out;
+}
+
+@keyframes ticker-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Personal best row glow */
+.ticker-row--pb {
+  background: var(--pw-purple-glow);
+}
+
+.ticker-lap-num {
+  color: var(--pw-text-dim);
+  width: 32px;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+
+.ticker-time {
+  color: var(--pw-text);
+  font-weight: 500;
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+
+.ticker-delta {
+  width: 64px;
+  text-align: right;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.ticker-delta--faster {
+  color: var(--pw-green);
+}
+
+.ticker-delta--slower {
+  color: var(--pw-red);
+}
+
+.ticker-pb {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--pw-purple);
+  background: var(--pw-purple-glow);
+  padding: 1px 5px;
+  border-radius: var(--pw-radius-sm);
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}

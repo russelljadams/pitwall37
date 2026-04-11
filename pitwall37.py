@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 log = logging.getLogger("pitwall37")
 
@@ -437,6 +438,12 @@ async def engineer_chat(websocket: WebSocket):
             await websocket.send_json({"type": "error", "content": str(e)})
         except Exception:
             pass
+
+
+# --- Static files (built frontend) ---
+
+if APP_DIR.exists() and (APP_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=APP_DIR / "assets"), name="static")
 
 
 if __name__ == "__main__":

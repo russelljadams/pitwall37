@@ -1,0 +1,279 @@
+/* === Telemetry Panel === */
+
+.telem-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+/* Top cluster: speed + gear + RPM */
+.telem-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.telem-speed-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.telem-speed {
+  font-family: var(--pw-font-data);
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pw-text);
+  letter-spacing: -0.02em;
+}
+
+.telem-speed-unit {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.telem-gear {
+  font-family: var(--pw-font-data);
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pw-red);
+  text-shadow: 0 0 20px var(--pw-red-glow);
+  min-width: 56px;
+  text-align: center;
+}
+
+.telem-rpm-cluster {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.telem-rpm-value {
+  font-family: var(--pw-font-data);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--pw-text);
+  letter-spacing: 0.02em;
+}
+
+.telem-rpm-bar-bg {
+  height: 8px;
+  background: var(--pw-surface-2);
+  border: 1px solid var(--pw-border);
+  border-radius: var(--pw-radius-sm);
+  overflow: hidden;
+}
+
+.telem-rpm-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--pw-green) 0%, var(--pw-amber) 70%, var(--pw-red) 95%);
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 50ms linear;
+}
+
+/* Pedal bars */
+.telem-pedals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.telem-pedal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telem-pedal-label {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.08em;
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.telem-pedal-bar-bg {
+  flex: 1;
+  height: 18px;
+  background: var(--pw-surface-2);
+  border: 1px solid var(--pw-border);
+  border-radius: var(--pw-radius-sm);
+  overflow: hidden;
+}
+
+.telem-pedal-bar {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 50ms linear;
+}
+
+.telem-pedal-bar--throttle {
+  background: var(--pw-green);
+  box-shadow: inset 0 0 8px var(--pw-green-glow);
+}
+
+.telem-pedal-bar--brake {
+  background: var(--pw-red);
+  box-shadow: inset 0 0 8px var(--pw-red-glow);
+}
+
+.telem-pedal-pct {
+  font-family: var(--pw-font-data);
+  font-size: 12px;
+  color: var(--pw-text-dim);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Bottom: G-force + Fuel */
+.telem-bottom {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.telem-gforce {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.telem-gforce-label {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.1em;
+}
+
+.telem-gforce-canvas {
+  width: 150px;
+  height: 150px;
+  border: 1px solid var(--pw-border);
+  border-radius: var(--pw-radius-sm);
+  background: var(--pw-surface-2);
+}
+
+.telem-fuel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.telem-fuel-label {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.1em;
+}
+
+.telem-fuel-value {
+  font-family: var(--pw-font-data);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--pw-text);
+  line-height: 1;
+}
+
+.telem-fuel-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--pw-text-dim);
+}
+
+.telem-fuel-laps {
+  font-family: var(--pw-font-data);
+  font-size: 16px;
+  color: var(--pw-amber);
+}
+
+.telem-fuel-bar-bg {
+  height: 6px;
+  background: var(--pw-surface-2);
+  border: 1px solid var(--pw-border);
+  border-radius: var(--pw-radius-sm);
+  overflow: hidden;
+}
+
+.telem-fuel-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--pw-amber);
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 200ms ease;
+}
+
+/* Status bar indicators */
+.sb-brand {
+  font-weight: 700;
+  color: var(--pw-red);
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 12px var(--pw-red-glow);
+}
+
+.sb-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sb-dot--on {
+  background: var(--pw-green);
+  box-shadow: 0 0 6px var(--pw-green-glow);
+}
+
+.sb-dot--off {
+  background: var(--pw-red-dim);
+  box-shadow: 0 0 6px var(--pw-red-glow);
+}
+
+.sb-label {
+  color: var(--pw-text-dim);
+}
+
+.sb-session {
+  color: var(--pw-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-sep {
+  color: var(--pw-text-muted);
+  margin: 0 4px;
+}
+
+.sb-spacer {
+  flex: 1;
+}
+
+.sb-lap {
+  color: var(--pw-text-dim);
+}
+
+.sb-lap-num {
+  color: var(--pw-text);
+  font-weight: 700;
+}
