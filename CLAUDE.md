@@ -28,20 +28,17 @@ pitwall37/
 │   ├── IDENTITY.md        ← Mission, principles, how we operate
 │   ├── SHARED-STATE.md    ← Live state dashboard — UPDATE AFTER SIGNIFICANT WORK
 │   ├── context/           ← Operator profile, missions, stack, skills
-│   │   ├── operator.md    ← Driver profile & communication style
-│   │   ├── missions.md    ← Active goals & priorities
-│   │   ├── stack.md       ← Full technical inventory
-│   │   └── skills.md      ← Capability matrix
 │   └── domain/            ← Track guides, car knowledge, technique guides
+├── app/                   ← Frontend (TO BE BUILT — stream-ready dashboard)
+│   └── dist/              ← Built frontend served by FastAPI
 ├── bridge/                ← Windows GPU box agent
 │   ├── bridge.py          ← Live iRacing bridge (pyirsdk → WebSocket → PitWall37)
 │   ├── install.bat        ← One-click installer
 │   └── run.bat            ← Launcher
-├── pitwall37.py           ← FastAPI server (dashboard + API + bridge + engineer chat)
+├── pitwall37.py           ← FastAPI server (API + bridge + engineer chat)
 ├── engineer.py            ← Claude race engineer (system prompt, context, streaming)
 ├── setup_model.py         ← Setup validation, physics model, comparison
 ├── ibt_parser.py          ← IBT binary parser (telemetry → DB + JSON)
-├── dashboard.html         ← Web UI for session review + engineer chat
 ├── sync.sh                ← Rsync IBT files from Windows GPU
 ├── data/                  ← Runtime data (DB, telemetry JSONs, IBT files)
 │   ├── pitwall37.db       ← SQLite: sessions, laps, tire_snapshots

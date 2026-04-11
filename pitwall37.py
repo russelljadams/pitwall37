@@ -1,5 +1,6 @@
-"""PitWall37 v2 — Race Engineer Dashboard
-FastAPI server serving telemetry analysis dashboard + engineer chat.
+"""PitWall37 v3 — Race Engineering API + Live Bridge
+FastAPI server: data API, bridge WebSocket, engineer chat, live dashboard feed.
+Frontend is served separately (see /app directory).
 """
 
 import asyncio
@@ -20,9 +21,9 @@ log = logging.getLogger("pitwall37")
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = DATA_DIR / "pitwall37.db"
 TELEM_DIR = DATA_DIR / "telemetry"
-DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
+APP_DIR = Path(__file__).parent / "app" / "dist"
 
-app = FastAPI(title="PitWall37", version="2.0")
+app = FastAPI(title="PitWall37", version="3.0")
 
 # --- Bridge State (live connection to GPU box) ---
 
@@ -48,10 +49,11 @@ def get_db():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard():
-    if DASHBOARD_PATH.exists():
-        return DASHBOARD_PATH.read_text()
-    return "<h1>PitWall37 — Dashboard not found</h1>"
+async def index():
+    index_path = APP_DIR / "index.html"
+    if index_path.exists():
+        return index_path.read_text()
+    return "<h1>PitWall37 v3 — Frontend not built yet. API is live at /docs</h1>"
 
 
 @app.get("/api/sessions")
