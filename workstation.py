@@ -1,8 +1,7 @@
-"""PitWall37 Workstation — Engineering station backend on port 3738.
+"""PitWall37 Workstation — Post-session engineering station on port 3738.
 
-Separate from the stream overlay (pitwall37.py on 3737).
 Serves the workstation frontend, provides data APIs, and runs the agent chat.
-Connects to the same SQLite database — no shared state needed with the stream service.
+The only server — drive, sync, parse, review here.
 """
 
 import asyncio
@@ -351,10 +350,8 @@ async def engineer_chat(websocket: WebSocket):
     await websocket.accept()
     try:
         from claude_code_sdk import ClaudeSDKClient
-        from race_agent import build_agent_options, set_bridge_state
+        from race_agent import build_agent_options
 
-        # Workstation doesn't have live bridge — pass empty state
-        set_bridge_state({})
         options = build_agent_options()
 
         async with ClaudeSDKClient(options=options) as client:

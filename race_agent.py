@@ -43,15 +43,6 @@ ensure_engineering_schema(DB_PATH)
 
 mcp_server = FastMCP("pitwall37")
 
-# Reference to bridge_state — set by pitwall37.py at startup
-_bridge_state: dict = {}
-
-
-def set_bridge_state(state: dict):
-    """Set the bridge state reference so tools can access live data."""
-    global _bridge_state
-    _bridge_state = state
-
 
 @mcp_server.tool(
     name="query_telemetry_db",
@@ -437,65 +428,6 @@ def compare_laps(
     return json.dumps(result, indent=2)
 
 
-@mcp_server.tool(
-    name="get_live_bridge_data",
-    description=(
-        "Get real-time data from the iRacing bridge. Returns current telemetry "
-        "(speed, RPM, gear, throttle, brake, fuel, lap, position), live setup "
-        "(all chassis/aero parameters), session info (car, track, driver), "
-        "and last completed lap. Use this to see what's happening RIGHT NOW."
-    ),
-)
-def get_live_bridge_data() -> str:
-    """Get current live data from the iRacing bridge."""
-    if not _bridge_state or not _bridge_state.get("connected"):
-        return "Bridge is not connected. No live data available."
-
-    parts = []
-    parts.append(f"Bridge connected: {_bridge_state.get('connected', False)}")
-    parts.append(f"iRacing connected: {_bridge_state.get('iracing_connected', False)}")
-
-    si = _bridge_state.get("session_info")
-    if si:
-        parts.append(f"Car: {si.get('car')} @ {si.get('track')} ({si.get('track_config', '')})")
-        parts.append(f"Driver: {si.get('driver')}")
-
-    t = _bridge_state.get("last_telemetry")
-    if t:
-        speed = (t.get("speed") or 0) * 3.6
-        parts.append(f"\nLive telemetry:")
-        parts.append(f"  Speed: {speed:.0f} km/h | RPM: {t.get('rpm', 0):.0f} | Gear: {t.get('gear', 0)}")
-        parts.append(f"  Throttle: {(t.get('throttle') or 0)*100:.0f}% | Brake: {(t.get('brake') or 0)*100:.0f}%")
-        parts.append(f"  Fuel: {t.get('fuel_level', 0):.2f}L ({(t.get('fuel_pct') or 0)*100:.1f}%)")
-        parts.append(f"  Lap: {t.get('lap', 0)} | On track: {t.get('on_track')} | In garage: {t.get('in_garage')}")
-        parts.append(f"  Best lap: {t.get('best_lap_time', 0):.3f}s | Last lap: {t.get('last_lap_time', 0):.3f}s")
-
-    setup = _bridge_state.get("live_setup")
-    if setup:
-        parts.append(f"\nLive setup (UpdateCount: {setup.get('UpdateCount', '?')}):")
-        ac = setup.get("TiresAero", {}).get("AeroCalculator", {})
-        if ac:
-            for k, v in ac.items():
-                parts.append(f"  {k}: {v}")
-        aero = setup.get("TiresAero", {}).get("AeroSetup", {})
-        if aero:
-            for k, v in aero.items():
-                parts.append(f"  {k}: {v}")
-        chassis = setup.get("Chassis", {})
-        for sec in ["Front", "LeftFront", "RightFront", "Rear", "LeftRear", "RightRear",
-                     "BrakesInCarMisc", "Differential"]:
-            section = chassis.get(sec, {})
-            if section:
-                parts.append(f"  {sec}:")
-                for k, v in section.items():
-                    parts.append(f"    {k}: {v}")
-
-    last_lap = _bridge_state.get("last_lap")
-    if last_lap:
-        parts.append(f"\nLast completed lap: #{last_lap.get('lap_number')} — {last_lap.get('lap_time', 0):.3f}s")
-
-    return "\n".join(parts) if parts else "No live data available."
-
 
 @mcp_server.tool(
     name="validate_setup_change",
@@ -776,7 +708,7 @@ def build_system_prompt() -> str:
     setup_knowledge = get_setup_knowledge_for_prompt()
 
     return f"""You are PitWall37 — the head race engineer for Russell Adams (gh0st / a1i3n37).
-You are not an assistant. You are not a chatbot. You are the engineer on the pit wall.
+You are not an assistant. You are the engineer reviewing data after the session.
 
 {identity}
 
@@ -798,7 +730,6 @@ Custom racing tools (via mcp__pitwall37__*):
 - query_telemetry_db — SQL queries against 120+ sessions of historical data
 - analyze_lap — deep 60Hz telemetry analysis for any lap
 - compare_laps — channel-by-channel comparison of two laps
-- get_live_bridge_data — real-time iRacing data from the bridge
 - validate_setup_change — check setup changes against observed safe ranges
 - predict_setup_effects — physics-based cause/effect for setup changes
 - compare_session_setups — diff two session setups
@@ -809,7 +740,7 @@ Custom racing tools (via mcp__pitwall37__*):
 - get_taxonomy_summary — summarize outcomes by focus area
 - get_session_debrief — summarize one session's pace and attached tests
 - list_engineering_log — inspect recent recommendations and experiments
-- list_session_events — inspect important live/session hook events
+- list_session_events — inspect session events
 
 Built-in tools (use freely):
 - WebSearch / WebFetch — search for setup guides, racing techniques, track knowledge
@@ -820,10 +751,8 @@ Built-in tools (use freely):
 WORKING DIRECTORY: {PROJECT_DIR}
 DATABASE: {DB_PATH}
 BRAIN: {BRAIN_DIR}
-GPU BOX SSH: ssh -i ~/.ssh/id_ed25519 russell@100.73.76.109
 
 Be direct. Be data-backed. Push the driver to be better.
-Celebrate progress but never accept "good enough."
 If you don't know something, say so — then use your tools to find out.
 
 ANTI-BS OUTPUT CONTRACT:
@@ -835,7 +764,7 @@ ANTI-BS OUTPUT CONTRACT:
   Action:
   Validation:
 - "Observation" must cite exact evidence: lap times, sectors, telemetry deltas,
-  setup values, historical comparisons, or live bridge readings.
+  setup values, historical comparisons.
 - "Action" must be a single concrete change unless the user explicitly asks for
   a broader plan.
 - "Validation" must say what metric should move next: lap time, sector, minimum
@@ -845,12 +774,9 @@ ANTI-BS OUTPUT CONTRACT:
 - Never hide uncertainty. If the conclusion is plausible but unproven, say so.
 - For any material recommendation, call log_recommendation with the same
   structured fields before you answer.
-- When reviewing prior work or building a long-term picture, prefer
-  get_driver_model, get_taxonomy_summary, get_session_debrief,
-  list_engineering_log, and list_session_events over vague memory.
 
 The mission: make this driver an alien. Top 10 Garage61 leaderboards. Beat Tamas Simon.
-"Greatest Race Car Driver Ever. He was built with Claude."
+Every lap compared. Every tenth found. Every session builds on the last.
 """
 
 
@@ -874,7 +800,6 @@ def build_agent_options(system_prompt: str | None = None) -> "ClaudeCodeOptions"
             "mcp__pitwall37__query_telemetry_db",
             "mcp__pitwall37__analyze_lap",
             "mcp__pitwall37__compare_laps",
-            "mcp__pitwall37__get_live_bridge_data",
             "mcp__pitwall37__validate_setup_change",
             "mcp__pitwall37__predict_setup_effects",
             "mcp__pitwall37__compare_session_setups",
