@@ -1,11 +1,13 @@
 /**
- * Engineer chat state — pit wall radio comms with the AI race engineer.
+ * Engineer chat state — pit wall radio comms via Claude Code SDK agent.
+ * Handles text chunks, tool usage indicators, and result messages.
  */
 import { signal } from '@preact/signals';
 import { sessionInfo, telemetry, laps, liveSetup } from './live.js';
 
 export const messages = signal([]);
 export const isStreaming = signal(false);
+export const activeTools = signal([]);  // Currently executing tools
 
 let engineerWs = null;
 let reconnectTimer = null;
@@ -23,7 +25,9 @@ function connectEngineer() {
   engineerWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
+
       if (msg.type === 'chunk') {
+        // Text from the agent — append to current streaming message
         const current = messages.value;
         const last = current[current.length - 1];
         if (last && last.streaming) {
@@ -34,15 +38,61 @@ function connectEngineer() {
           };
           messages.value = updated;
         }
+
+      } else if (msg.type === 'tool_use') {
+        // Agent is calling a tool — show indicator
+        const toolName = msg.tool || 'unknown';
+        activeTools.value = [...activeTools.value, toolName];
+
+        // Add tool usage note to the message stream
+        const current = messages.value;
+        const last = current[current.length - 1];
+        if (last && last.streaming) {
+          const toolLabel = _formatToolName(toolName);
+          const updated = [...current];
+          const existingTools = last.tools || [];
+          updated[updated.length - 1] = {
+            ...last,
+            tools: [...existingTools, { name: toolName, label: toolLabel, status: 'running' }],
+          };
+          messages.value = updated;
+        }
+
+      } else if (msg.type === 'tool_result') {
+        // Tool completed — remove from active
+        activeTools.value = activeTools.value.slice(1);
+
+        // Mark tool as complete in message
+        const current = messages.value;
+        const last = current[current.length - 1];
+        if (last && last.tools) {
+          const updated = [...current];
+          const tools = [...last.tools];
+          const runningIdx = tools.findIndex(t => t.status === 'running');
+          if (runningIdx >= 0) {
+            tools[runningIdx] = { ...tools[runningIdx], status: msg.is_error ? 'error' : 'done' };
+          }
+          updated[updated.length - 1] = { ...last, tools };
+          messages.value = updated;
+        }
+
       } else if (msg.type === 'done') {
         const current = messages.value;
         const last = current[current.length - 1];
         if (last && last.streaming) {
           const updated = [...current];
-          updated[updated.length - 1] = { ...last, streaming: false };
+          updated[updated.length - 1] = {
+            ...last,
+            streaming: false,
+            cost: msg.cost_usd,
+            turns: msg.turns,
+            sessionId: msg.session_id,
+          };
           messages.value = updated;
         }
         isStreaming.value = false;
+        activeTools.value = [];
+
       } else if (msg.type === 'error') {
         const current = messages.value;
         const last = current[current.length - 1];
@@ -56,6 +106,7 @@ function connectEngineer() {
           messages.value = updated;
         }
         isStreaming.value = false;
+        activeTools.value = [];
       }
     } catch (err) {
       console.error('[PW37] Engineer parse error:', err);
@@ -66,6 +117,7 @@ function connectEngineer() {
     console.log('[PW37] Engineer WS disconnected');
     engineerWs = null;
     isStreaming.value = false;
+    activeTools.value = [];
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(connectEngineer, 3000);
   };
@@ -73,6 +125,35 @@ function connectEngineer() {
   engineerWs.onerror = () => {
     engineerWs.close();
   };
+}
+
+function _formatToolName(name) {
+  // Convert tool names to readable labels
+  const labels = {
+    'mcp__pitwall37__query_telemetry_db': 'Querying database',
+    'mcp__pitwall37__analyze_lap': 'Analyzing lap telemetry',
+    'mcp__pitwall37__compare_laps': 'Comparing laps',
+    'mcp__pitwall37__get_live_bridge_data': 'Reading live data',
+    'mcp__pitwall37__validate_setup_change': 'Validating setup',
+    'mcp__pitwall37__predict_setup_effects': 'Predicting effects',
+    'mcp__pitwall37__compare_session_setups': 'Comparing setups',
+    'mcp__pitwall37__log_recommendation': 'Logging recommendation',
+    'mcp__pitwall37__log_experiment': 'Logging experiment',
+    'mcp__pitwall37__grade_recommendation': 'Grading recommendation',
+    'mcp__pitwall37__get_driver_model': 'Loading driver model',
+    'mcp__pitwall37__get_taxonomy_summary': 'Loading taxonomy',
+    'mcp__pitwall37__get_session_debrief': 'Building debrief',
+    'mcp__pitwall37__list_engineering_log': 'Reading engineering log',
+    'mcp__pitwall37__list_session_events': 'Reading session events',
+    'WebSearch': 'Searching the web',
+    'WebFetch': 'Fetching web page',
+    'Bash': 'Running command',
+    'Read': 'Reading file',
+    'Write': 'Writing file',
+    'Glob': 'Searching files',
+    'Grep': 'Searching code',
+  };
+  return labels[name] || name;
 }
 
 function buildContext() {
@@ -123,7 +204,7 @@ export function sendMessage(text) {
 
   messages.value = [
     ...messages.value,
-    { role: 'ENGINEER', text: '', ts: now, streaming: true },
+    { role: 'ENGINEER', text: '', ts: now, streaming: true, tools: [] },
   ];
 
   isStreaming.value = true;

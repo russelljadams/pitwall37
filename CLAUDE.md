@@ -29,16 +29,20 @@ pitwall37/
 │   ├── SHARED-STATE.md    ← Live state dashboard — UPDATE AFTER SIGNIFICANT WORK
 │   ├── context/           ← Operator profile, missions, stack, skills
 │   └── domain/            ← Track guides, car knowledge, technique guides
-├── app/                   ← Frontend (TO BE BUILT — stream-ready dashboard)
+├── app/                   ← Stream-facing overlay for audience/overlay use
 │   └── dist/              ← Built frontend served by FastAPI
+├── workstation/           ← Private driver review room
+├── workstation.py         ← Private workstation backend (3738)
 ├── bridge/                ← Windows GPU box agent
 │   ├── bridge.py          ← Live iRacing bridge (pyirsdk → WebSocket → PitWall37)
 │   ├── install.bat        ← One-click installer
 │   └── run.bat            ← Launcher
-├── pitwall37.py           ← FastAPI server (API + bridge + engineer chat)
-├── engineer.py            ← Claude race engineer (system prompt, context, streaming)
+├── pitwall37.py           ← Stream overlay backend (API + bridge + engineer chat)
+├── race_agent.py          ← Claude Code SDK agent + custom MCP racing tools
+├── engineering_data.py    ← Recommendations, experiments, session events, driver model
 ├── setup_model.py         ← Setup validation, physics model, comparison
 ├── ibt_parser.py          ← IBT binary parser (telemetry → DB + JSON)
+├── pw.py                  ← Lean terminal workflow CLI
 ├── sync.sh                ← Rsync IBT files from Windows GPU
 ├── data/                  ← Runtime data (DB, telemetry JSONs, IBT files)
 │   ├── pitwall37.db       ← SQLite: sessions, laps, tire_snapshots
@@ -66,8 +70,8 @@ pitwall37/
 iRacing (Win GPU 100.73.76.109) → IBT files
     → sync.sh (rsync over Tailscale)
     → ibt_parser.py (parse binary → SQLite + JSON)
-    → pitwall37.py (serve via API)
-    → dashboard.html (visualize + engineer chat)
+    → workstation.py / pw.py (review + debrief + analysis)
+    → pitwall37.py / app (overlay when streaming)
 ```
 
 **Live (during session):**
@@ -80,11 +84,13 @@ iRacing → pyirsdk shared memory → bridge.py (GPU box)
 
 ## Quick Reference
 
-- **Dashboard:** http://localhost:3737
-- **API docs:** http://localhost:3737/docs
+- **Overlay:** http://localhost:3737
+- **Workstation:** http://localhost:3738
+- **API docs:** http://localhost:3737/docs and http://localhost:3738/docs
 - **Bridge status:** http://localhost:3737/api/bridge/status
 - **Live setup:** http://localhost:3737/api/bridge/setup
 - **Live telemetry:** http://localhost:3737/api/bridge/telemetry
+- **CLI:** `python3 pw.py --help`
 - **Database:** data/pitwall37.db (SQLite)
 - **Sessions:** 120+ parsed, tracks: Interlagos, Mugello, Road Atlanta, Red Bull Ring, Monza
 - **AI Models:** claude-sonnet-4 (primary), claude-haiku-4.5 (fallback)

@@ -1,7 +1,27 @@
 import { useRef, useEffect } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import { messages, isStreaming, sendMessage } from '../state/engineer.js';
+import { messages, isStreaming, activeTools, sendMessage } from '../state/engineer.js';
 import { formatTimestamp } from '../lib/format.js';
+
+function ToolIndicator({ tools }) {
+  if (!tools || tools.length === 0) return null;
+  return (
+    <div class="eng-tools">
+      {tools.map((t, i) => (
+        <span
+          key={i}
+          class={`eng-tool eng-tool--${t.status}`}
+          title={t.name}
+        >
+          {t.status === 'running' && <span class="eng-tool-spinner" />}
+          {t.status === 'done' && <span class="eng-tool-check">✓</span>}
+          {t.status === 'error' && <span class="eng-tool-err">✗</span>}
+          {t.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export function Engineer() {
   const inputText = useSignal('');
@@ -37,6 +57,9 @@ export function Engineer() {
       <div class="panel-header">
         PIT WALL RADIO
         {isStreaming.value && <span class="eng-streaming-dot" />}
+        {activeTools.value.length > 0 && (
+          <span class="eng-active-tool">{activeTools.value[activeTools.value.length - 1]}</span>
+        )}
       </div>
       <div class="eng-messages" ref={scrollRef}>
         {msgList.length === 0 ? (
@@ -46,11 +69,20 @@ export function Engineer() {
           </div>
         ) : (
           msgList.map((msg, i) => (
-            <div key={i} class={`eng-msg eng-msg--${msg.role.toLowerCase()}`}>
+            <div
+              key={i}
+              class={`eng-msg eng-msg--${msg.role.toLowerCase()}${msg.proactive ? ' eng-msg--proactive' : ''}`}
+            >
               <div class="eng-msg-header">
-                <span class="eng-msg-role">{msg.role}</span>
+                <span class="eng-msg-role">
+                  {msg.role}
+                  {msg.proactive && <span class="eng-proactive-badge">AUTO</span>}
+                </span>
                 <span class="eng-msg-ts">{formatTimestamp(msg.ts)}</span>
               </div>
+              {msg.tools && msg.tools.length > 0 && (
+                <ToolIndicator tools={msg.tools} />
+              )}
               <div class="eng-msg-text">
                 {msg.text}
                 {msg.streaming && <span class="eng-cursor" />}

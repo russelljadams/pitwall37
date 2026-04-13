@@ -1,0 +1,17 @@
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #app { height: 100%; width: 100%; overflow: hidden; }
+body {
+  background: var(--pw-black);
+  color: var(--pw-text);
+  font-family: var(--pw-font-ui);
+  font-size: 14px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+input, button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+a { color: var(--pw-blue); text-decoration: none; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--pw-border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--pw-border-light); }

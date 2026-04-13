@@ -1,0 +1,52 @@
+/* === Alien Face SVG Animations === */
+
+/* Idle breathing */
+.alien-head {
+  animation: alien-breathe 4s ease-in-out infinite;
+}
+
+@keyframes alien-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+/* Eye blink */
+.alien-eye-lid {
+  animation: alien-blink 6s ease-in-out infinite;
+}
+
+@keyframes alien-blink {
+  0%, 95%, 100% { transform: scaleY(1); }
+  97% { transform: scaleY(0.05); }
+}
+
+/* Speaking animation */
+.alien-mouth.speaking {
+  animation: alien-speak 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes alien-speak {
+  0% { transform: scaleY(0.3) translateY(1px); }
+  100% { transform: scaleY(1) translateY(0); }
+}
+
+/* Eye glow on tool use */
+.alien-eye.glowing {
+  filter: drop-shadow(0 0 6px var(--pw-cyan)) brightness(1.4);
+  transition: filter 200ms ease;
+}
+
+.alien-eye:not(.glowing) {
+  filter: none;
+  transition: filter 600ms ease;
+}
+
+/* Ambient glow */
+.alien-glow {
+  animation: alien-ambient 3s ease-in-out infinite;
+}
+
+@keyframes alien-ambient {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}

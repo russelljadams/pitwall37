@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+from engineering_data import ensure_engineering_schema
 
 try:
     import irsdk
@@ -72,6 +73,7 @@ CHANNEL_KEYS = {
 
 def init_db():
     """Create SQLite tables if they don't exist."""
+    ensure_engineering_schema(DB_PATH)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.executescript("""
@@ -197,8 +199,16 @@ def extract_setup(session_info):
 
 
 def detect_laps(ibt_obj, tick_count):
-    """Detect clean lap boundaries using S/F crossings and teleport detection.
-    A clean lap has LapDistPct going 0->1 with no large jumps (teleports).
+    """Detect lap boundaries using iRacing's LapLastLapTime as authority.
+
+    In hotlap mode, iRacing teleports the car after each S/F crossing, creating
+    many spurious crossings in dist_pct. Instead of trying to filter teleports,
+    we scan the full tick stream for moments where LapLastLapTime changes to a
+    new positive value — each such change marks a completed lap.
+
+    For each completed lap we find the start crossing by looking for the S/F
+    crossing approximately lap_time seconds before the end tick.
+
     Returns list of dicts with lap_number, start_tick, end_tick, lap_time, valid.
     """
     dist_data = ibt_obj.get_all("LapDistPct")
@@ -206,53 +216,75 @@ def detect_laps(ibt_obj, tick_count):
     laptime_data = ibt_obj.get_all("LapLastLapTime")
     on_pit = ibt_obj.get_all("OnPitRoad")
 
-    # Find S/F crossings (dist wraps from >0.95 to <0.05)
+    # Find ALL S/F crossings (dist wraps from high to low)
     crossings = []
     for i in range(1, tick_count):
-        if dist_data[i - 1] > 0.95 and dist_data[i] < 0.05:
+        if dist_data[i - 1] > 0.90 and dist_data[i] < 0.10:
             crossings.append(i)
 
+    if not crossings:
+        return []
+
+    # Detect lap completions: find ticks where LapLastLapTime changes to a new
+    # positive value. Each unique transition = one completed lap.
+    lap_completions = []  # (tick, lap_time)
+    prev_lap_time = -1.0
+    for i in range(tick_count):
+        lt = laptime_data[i]
+        if lt > 10 and abs(lt - prev_lap_time) > 0.001:
+            lap_completions.append((i, lt))
+            prev_lap_time = lt
+
+    # For each completion, find the nearest S/F crossing as the end tick,
+    # then find the start crossing ~lap_time seconds before it.
     laps = []
-    for idx in range(1, len(crossings)):
-        start = crossings[idx - 1]
-        end = crossings[idx]
+    used_starts = set()
 
-        # Detect teleports: any dist_pct jump > 0.01 in a single tick
-        has_teleport = False
-        for j in range(start, end - 1):
-            if dist_data[j + 1] - dist_data[j] > 0.01:
-                has_teleport = True
-                break
+    for comp_tick, lap_time in lap_completions:
+        # Find the closest crossing to this completion tick (should be just before)
+        end_crossing = None
+        best_delta = float("inf")
+        for c in crossings:
+            delta = abs(c - comp_tick)
+            if delta < best_delta:
+                best_delta = delta
+                end_crossing = c
+        if end_crossing is None or best_delta > 180:  # Must be within 3 sec
+            continue
 
-        # Lap number from the start of this lap segment
-        lap_num = lap_data[start]
+        # Find the start crossing: closest to (end - lap_time * 60Hz)
+        expected_start = end_crossing - int(lap_time * 60)
+        best_start = None
+        best_start_delta = float("inf")
+        for c in crossings:
+            if c >= end_crossing or c in used_starts:
+                continue
+            delta = abs(c - expected_start)
+            if delta < best_start_delta:
+                best_start_delta = delta
+                best_start = c
+        if best_start is None:
+            continue
 
-        # LapLastLapTime is reported at the NEXT crossing (end of this lap)
-        # Check at the end crossing and a few ticks after
-        lap_time = None
-        check_end = min(end + 60, tick_count)  # Check up to 1 sec after crossing
-        for j in range(end, check_end):
-            if laptime_data[j] > 0:
-                lap_time = laptime_data[j]
-                break
+        used_starts.add(best_start)
+        lap_num = lap_data[end_crossing]
 
-        # Check pit road
-        was_on_pit = any(on_pit[j] for j in range(start, min(end, tick_count)))
+        # Check pit road on the real segment
+        was_on_pit = any(on_pit[j] for j in range(best_start, min(end_crossing, tick_count)))
 
-        # Valid = no teleport, not on pit, has timed lap > 10s
-        valid = (not has_teleport and not was_on_pit
-                 and lap_time is not None and lap_time > 10)
+        valid = lap_time > 10 and not was_on_pit
 
         laps.append({
             "lap_number": lap_num,
-            "start_tick": start,
-            "end_tick": end,
+            "start_tick": best_start,
+            "end_tick": end_crossing,
             "lap_time": lap_time,
             "on_pit": was_on_pit,
-            "teleport": has_teleport,
+            "teleport": False,
             "valid": valid,
         })
 
+    laps.sort(key=lambda l: l["start_tick"])
     return laps
 
 
@@ -553,8 +585,8 @@ def parse_ibt(filepath, conn=None):
         "imported_at": datetime.now().isoformat(),
     }
 
-    # Write to database
-    if conn:
+    # Write to database (skip sessions with no laps — out-laps, garage checks, etc.)
+    if conn and lap_records:
         conn.execute("""
             INSERT OR REPLACE INTO sessions
             (id, filename, car, track, track_config, track_id, track_length_km,

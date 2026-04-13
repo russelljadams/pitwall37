@@ -5,16 +5,14 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Data (too large for git, contains personal telemetry)
-data/ibt/
-data/telemetry/
-data/pitwall37.db
-data/pitwall37.db.bak
-data/setups/
+# Data (runtime only, contains personal telemetry and local state)
+data/
 
 # Node
 app/node_modules/
 app/dist/
+workstation/node_modules/
+workstation/dist/
 
 # IDE
 .vscode/
@@ -26,3 +24,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Runtime / local artifacts
+__pycache__/

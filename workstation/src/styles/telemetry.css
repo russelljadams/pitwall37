@@ -1,0 +1,202 @@
+/* === Telemetry Charts === */
+
+.tc-container {
+  padding: 4px;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Summary cards */
+.tc-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px 8px;
+}
+
+.tc-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--pw-surface-2);
+  border-radius: var(--pw-radius-sm);
+  border: 1px solid var(--pw-border);
+}
+
+.tc-summary-lap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pw-text);
+  border-left: 3px solid;
+  padding-left: 6px;
+}
+
+.tc-summary-swatch {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tc-summary-stats {
+  display: flex;
+  gap: 10px;
+  font-family: var(--pw-font-data);
+  font-size: 9px;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.02em;
+}
+
+.tc-summary-stats .tc-danger {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.tc-summary-stats .tc-warn {
+  color: var(--pw-amber);
+  font-weight: 600;
+}
+
+/* Chart groups */
+.tc-group {
+  border-bottom: 1px solid var(--pw-border);
+}
+
+.tc-group:last-child {
+  border-bottom: none;
+}
+
+.tc-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--pw-surface);
+  border: none;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.tc-group-header:hover {
+  background: var(--pw-surface-2);
+}
+
+.tc-group-arrow {
+  font-size: 9px;
+  color: var(--pw-text-muted);
+  width: 10px;
+}
+
+.tc-group-label {
+  font-family: var(--pw-font-data);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--pw-text-dim);
+  text-transform: uppercase;
+}
+
+.tc-group-count {
+  font-family: var(--pw-font-data);
+  font-size: 8px;
+  color: var(--pw-text-muted);
+  margin-left: auto;
+}
+
+.tc-group-body {
+  padding: 0 4px 4px;
+}
+
+/* Individual chart */
+.tc-chart-wrap {
+  margin: 2px 0;
+}
+
+.tc-chart-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-family: var(--pw-font-data);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--pw-text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tc-chart-unit {
+  font-weight: 400;
+  color: var(--pw-text-muted);
+  text-transform: none;
+}
+
+.tc-danger-badge {
+  font-size: 7px;
+  font-weight: 700;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+}
+
+/* Legend for multi-lap overlay */
+.tc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.tc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  color: var(--pw-text-dim);
+}
+
+.tc-legend-swatch {
+  width: 10px;
+  height: 3px;
+  border-radius: 1px;
+}
+
+/* Loading state */
+.tc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  color: var(--pw-text-muted);
+  letter-spacing: 0.1em;
+  animation: tc-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* uPlot overrides for dark theme */
+.tc-container .u-wrap {
+  background: var(--pw-black) !important;
+}
+
+.tc-container .u-over {
+  cursor: crosshair !important;
+}
+
+.tc-container .u-legend {
+  display: none !important;
+}

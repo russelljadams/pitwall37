@@ -16,8 +16,10 @@ Current season (26S2) tracks with data:
 - Mugello
 
 ## Techniques
-Racing technique guides will live in `brain/domain/techniques/`.
-To be built from telemetry patterns and coaching sessions.
+Racing technique guides live in `brain/domain/techniques/`.
+
+- [anti_bs_engineering_plan.md](techniques/anti_bs_engineering_plan.md) — Output contract, recommendation scorecard, experiment log, weakness taxonomy, driver model.
+- [ride_height_bottoming_engineering.md](techniques/ride_height_bottoming_engineering.md) — Comprehensive guide to ride height management, bottoming out types (mechanical vs aero stall vs plank contact), acceptable limits, aero maps, ground effect, bump stops, third springs, spring rate selection, telemetry metrics. Includes links to OptimumG seminars, SAE papers, free resources.
 
 ## Key Physics Concepts
 - **Aero balance:** ratio of front-to-rear downforce. Controls understeer/oversteer at speed

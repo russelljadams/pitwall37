@@ -1,16 +1,21 @@
 # PitWall37 — Shared State
 
-> Last updated: 2026-04-11
-> Updated by: Claude (brain bootstrap + bridge deployment session)
+> Last updated: 2026-04-13
+> Updated by: Claude (session agent + production vision)
 
 ## Right Now
 
-- Brain system fully operational (IDENTITY, SHARED-STATE, context, memory)
+- **Session agent is LIVE** — persistent agentic loop replaces old stateless `_proactive_engineer()`
+- Agent accumulates full session context: laps, setup changes, pace trends, fuel, consistency
+- Agent DECIDES when to speak (PBs, degradation, stint debriefs, periodic check-ins) — no hardcoded triggers
+- Generates session-end debrief when bridge disconnects
+- New endpoint: `/api/session-agent/status` — check agent state in real-time
+- Full vision doc at `brain/context/session_agent_vision.md` — covers agent spine + production layer
+- Production model: **weekly YouTube episodes**, not live streaming
 - Live bridge TESTED AND WORKING — streaming real-time telemetry from iRacing on GPU box
-- Successfully read live setup + telemetry from Mugello session (SFL, 97.846s best this session)
-- 120 sessions parsed from IBT files into pitwall37.db (was 118, grew during session)
-- PitWall37 dashboard running as systemd service on port 3737
-- .sto binary format reverse-engineered: ENCRYPTED by iRacing, pivot to SDK bridge complete
+- 120 sessions parsed from IBT files into pitwall37.db
+- Anti-BS engineering layer: structured recommendations, experiments, driver model, taxonomy summaries
+- Lean CLI via `pw.py` for stats, debriefs, driver model, and taxonomy
 
 ## What Exists
 
@@ -18,8 +23,10 @@
 |-----------|--------|-------|
 | IBT Parser | Working | Parses 60Hz telemetry, tire data, setup JSON, ride height |
 | Setup Model | Working | 118-session validated ranges, change effects, inspection rules |
-| Race Engineer | Working | Claude-powered, streams via WebSocket, full setup context |
-| Dashboard | Working | Session list, telemetry viewer, engineer chat, comparison mode |
+| Race Engineer | **Rebuilt** | Claude Code SDK agent with MCP tools, WebSearch, Bash, Read/Write |
+| Workstation | Working | Private session review, telemetry viewer, engineer chat, comparison mode |
+| Stream Overlay | Working | Public-facing live overlay on port 3737 |
+| Lean CLI | **NEW** | `pw.py` supports terminal-first stats/debrief/model workflow |
 | PitWall37 API | Working | FastAPI on port 3737, sessions/laps/telemetry/setup endpoints |
 | Knowledge Base | Partial | Garage constraints JSON, .sto files. No track guides yet |
 | Brain/Memory | Working | IDENTITY, SHARED-STATE, context files, Claude memory system |
@@ -32,7 +39,8 @@
 
 | Service | Port | Status | Auth |
 |---------|------|--------|------|
-| PitWall37 | 3737 | Running (systemd) | None |
+| PitWall37 Stream Overlay | 3737 | Running (systemd) | None |
+| PitWall37 Workstation | 3738 | Running (systemd) | None |
 | Bridge (GPU) | N/A | Connects outbound to ws://100.85.186.91:3737/ws/bridge | None |
 
 ## Data Pipeline
@@ -76,13 +84,11 @@ iRacing → pyirsdk shared memory → bridge.py → WebSocket → PitWall37 → 
 
 ## What's Next
 
-1. ~~Build brain system~~ DONE
-2. ~~Set up Claude memory~~ DONE
-3. ~~Build bridge~~ DONE
-4. ~~Deploy bridge to GPU box~~ DONE — tested live with Mugello session
-5. ~~Create GitHub repo~~ DONE
-6. Track guides for current season tracks
-7. Garage61 leaderboard tracking/targets
-8. Live dashboard enhancements (real-time telemetry display from bridge)
-9. Auto-start bridge on Windows boot (scheduled task or startup folder)
-10. Bridge → engineer integration (live telemetry feeds directly into Claude analysis)
+1. **Drive with the session agent live** — first real test of the persistent agentic loop
+2. Build the **session narrative export** (`pw.py export-narrative <session_id>`) for YouTube episodes
+3. Build the **script generator** persona — takes session narrative, produces show script
+4. Set up **TTS pipeline** — distinct voices for engineer, commentator, analyst
+5. **First YouTube episode** — iRacing replay + PitWall37 overlay + TTS voiceover
+6. Keep daily workflow lean: drive → debrief → diagnose one limiter → test one variable → grade result
+7. Track Garage61 target deltas per circuit
+8. Build track guides for the active season

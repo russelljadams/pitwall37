@@ -11,6 +11,7 @@
 - Each guide: corner-by-corner notes, setup tendencies, braking references, target times
 - Populate from telemetry data + engineer analysis
 - Tracks with data: Interlagos, Road Atlanta, Red Bull Ring, Mugello, Monza
+- This is part of the private driver-improvement system, not audience packaging
 
 ## Mission 3: .sto Parser — BLOCKED (Encrypted)
 - ~~Reverse-engineer the iRacing .sto binary format~~
@@ -22,15 +23,16 @@
 
 ## Mission 4: Setup Editor — REDESIGNED
 - ~~Export modified .sto files loadable by iRacing~~ — not possible (encryption)
-- New approach: web UI that RECOMMENDS changes with specific values
+- New approach: recommendation workflow that suggests changes with specific values
 - Driver applies changes manually in iRacing garage
 - Bridge detects the change via UpdateCount and validates it was applied correctly
-- Still needs: slider-based parameter editing UI, constraint validation display
+- Still needs: lean recommendation logging, constraint validation display, experiment grading
 
-## Mission 5: Garage61 Leaderboard Assault (QUEUED)
+## Mission 5: Garage61 Leaderboard Assault (ACTIVE)
 - Track our times vs. top 10 on Garage61 hotlap boards
 - Set specific targets per track
 - Track delta to target over sessions
+- Use this as the outward narrative for the content/brand journey
 
 ## Mission 6: GPU Box Bridge — COMPLETE
 - ~~Build bridge connecting iRacing to PitWall37 via WebSocket~~
@@ -46,20 +48,22 @@
 - MOZA Pit House for FFB tuning
 - Still need: document FFB settings, pedal curves, create paired profiles
 
-## Mission 8: Trading Paints / Livery Design (QUEUED)
-- Interface with Trading Paints for custom livery management
-- Bridge already supports texture reload via SDK broadcast
-- Explore AI-generated paint scheme creation
-- Team branding for gh0st / a1i3n37
+## Mission 8: PitWall Overlay / Audience Layer (ACTIVE)
+- Keep `app/` lean and stream-readable
+- Show live lap, telemetry highlights, setup status, and engineer radio snippets
+- Make the overlay useful for audience context, not for the driver's primary workflow
+- Use it to support streaming when the time is right, not as the main engineering surface
 
 ## Backlog
+- Weekly content workflow: track writeups, telemetry-backed clips, improvement arcs
 - Fuel strategy calculator
 - Tire degradation modeling across stint lengths
 - Race strategy tool (pit windows, undercut/overcut analysis)
-- Multi-car support (expand beyond F324)
-- Public setup sharing site (separate project from setup editor)
+- Public-facing website only after the content loop proves itself
 - Racecraft coaching module (overtaking, defending, race starts)
-- Series progression advisor (what to drive, when to move up)
-- Zero-to-pro onboarding flow for new drivers
 - Auto-start bridge on Windows boot
-- Live telemetry → Claude engineer pipeline (real-time coaching while driving)
+
+## Not The Mission
+- Turning the dashboard into a standalone product
+- Building broad multi-car support right now
+- Over-investing in UI at the expense of practice and review volume

@@ -1,0 +1,462 @@
+/* === Main Layout === */
+
+.ws-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Title Bar ── */
+
+.ws-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 36px;
+  min-height: 36px;
+  background: var(--pw-surface);
+  border-bottom: 1px solid var(--pw-border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.ws-titlebar-brand {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--pw-red);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ws-titlebar-sep {
+  color: var(--pw-text-muted);
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+}
+
+.ws-titlebar-sub {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--pw-text-dim);
+  text-transform: uppercase;
+}
+
+.ws-titlebar-spacer {
+  flex: 1;
+}
+
+.ws-titlebar-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ws-titlebar-stat {
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  color: var(--pw-text-muted);
+  letter-spacing: 0.05em;
+}
+
+.ws-titlebar-stat span {
+  color: var(--pw-text-dim);
+}
+
+
+/* ── Desktop Grid ── */
+
+.ws-grid {
+  display: grid;
+  grid-template-columns: var(--left-col, 280px) 4px 1fr 4px var(--right-col, 300px);
+  grid-template-rows: 1fr;
+  flex: 1;
+  overflow: hidden;
+  background: var(--pw-black);
+}
+
+
+/* ── Left Sidebar ── */
+
+.ws-area-left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pw-black);
+  border-right: 1px solid var(--pw-border);
+}
+
+.ws-area-left.ws-area--collapsed {
+  border-right: 1px solid var(--pw-border);
+}
+
+.ws-left-top {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--pw-border);
+}
+
+.ws-left-bottom {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+
+/* ── Center Area ── */
+
+.ws-area-center {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pw-black);
+  position: relative;
+}
+
+.ws-center-top {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-center-bottom {
+  height: var(--bottom-row, 220px);
+  min-height: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.ws-center-bottom--collapsed {
+  height: 32px !important;
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+.ws-center-bottom-content {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Bottom collapse button */
+.ws-bottom-collapse-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--pw-text-muted);
+  background: var(--pw-surface);
+  border: 1px solid var(--pw-border);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 8;
+}
+
+.ws-bottom-collapse-btn:hover {
+  background: var(--pw-surface-3);
+  color: var(--pw-text-dim);
+}
+
+/* Collapsed bottom bar */
+.ws-bottom-collapsed-bar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--pw-surface);
+  border-top: 1px solid var(--pw-border);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.ws-bottom-collapsed-bar:hover {
+  background: var(--pw-surface-2);
+}
+
+.ws-bottom-collapsed-label {
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pw-text-muted);
+}
+
+.ws-bottom-collapsed-icon {
+  font-size: 11px;
+  color: var(--pw-text-muted);
+}
+
+
+/* ── Right Sidebar ── */
+
+.ws-area-right {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pw-black);
+  border-left: 1px solid var(--pw-border);
+}
+
+
+/* ── Sidebar Collapse Toggle Buttons ── */
+
+.ws-sidebar-toggle {
+  position: absolute;
+  top: 8px;
+  z-index: 7;
+  width: 16px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pw-surface);
+  border: 1px solid var(--pw-border);
+  border-radius: 3px;
+  color: var(--pw-text-muted);
+  font-size: 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease, background 100ms ease, color 100ms ease;
+}
+
+.ws-area-center:hover .ws-sidebar-toggle {
+  opacity: 1;
+}
+
+.ws-sidebar-toggle:hover {
+  background: var(--pw-surface-3);
+  color: var(--pw-text-dim);
+}
+
+.ws-sidebar-toggle--left {
+  left: 4px;
+}
+
+.ws-sidebar-toggle--right {
+  right: 4px;
+}
+
+
+/* ── Collapsed Sidebar Tab ── */
+
+.ws-collapsed-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  cursor: pointer;
+  background: var(--pw-surface);
+  transition: background 150ms ease;
+}
+
+.ws-collapsed-tab:hover {
+  background: var(--pw-surface-2);
+}
+
+.ws-collapsed-tab-label {
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--pw-text-muted);
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.ws-collapsed-tab-icon {
+  font-size: 12px;
+  color: var(--pw-text-muted);
+}
+
+
+/* ── Resize Handles ── */
+
+.ws-resize-handle {
+  background: transparent;
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+}
+
+.ws-resize-handle::after {
+  content: '';
+  position: absolute;
+  background: var(--pw-border);
+  transition: background 150ms ease;
+}
+
+.ws-resize-handle:hover::after {
+  background: var(--pw-red-dim);
+}
+
+.ws-resize-handle:active::after {
+  background: var(--pw-red);
+}
+
+/* Vertical divider (between columns) */
+.ws-resize-col {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.ws-resize-col::after {
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 1px;
+  height: 100%;
+}
+
+/* Horizontal divider (between rows) */
+.ws-resize-row {
+  height: 4px;
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+
+.ws-resize-row::after {
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 1px;
+  width: 100%;
+}
+
+/* Spacer when handle is hidden (collapsed sidebar) */
+.ws-resize-spacer {
+  width: 0;
+}
+
+
+/* ── Mobile Layout ── */
+
+.ws-mobile-tabs {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .ws-grid {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-bottom: 48px;
+  }
+
+  /* Hide all areas and handles by default on mobile */
+  .ws-area-left,
+  .ws-area-center,
+  .ws-area-right,
+  .ws-resize-handle,
+  .ws-resize-spacer {
+    display: none;
+  }
+
+  /* Sidebar toggles hidden on mobile */
+  .ws-sidebar-toggle {
+    display: none;
+  }
+
+  /* Show active content */
+  .ws-area-left.ws-mobile-active {
+    display: flex !important;
+    flex: 1;
+    min-height: 0;
+    border-right: none;
+  }
+
+  /* Agent tab — show center with only chat */
+  .ws-grid:has(.ws-center-top.ws-mobile-active) .ws-area-center {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .ws-grid:has(.ws-center-top.ws-mobile-active) .ws-center-bottom,
+  .ws-grid:has(.ws-center-top.ws-mobile-active) .ws-resize-row {
+    display: none;
+  }
+
+  .ws-grid:has(.ws-center-top.ws-mobile-active) .ws-center-top {
+    flex: 1;
+  }
+
+  /* Telemetry tab — show center with only telemetry */
+  .ws-grid:has(.ws-center-bottom.ws-mobile-active) .ws-area-center {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .ws-grid:has(.ws-center-bottom.ws-mobile-active) .ws-center-top,
+  .ws-grid:has(.ws-center-bottom.ws-mobile-active) .ws-resize-row {
+    display: none;
+  }
+
+  .ws-grid:has(.ws-center-bottom.ws-mobile-active) .ws-center-bottom {
+    flex: 1;
+    height: auto !important;
+  }
+
+  /* Setup tab */
+  .ws-area-right.ws-mobile-active {
+    display: flex !important;
+    flex: 1;
+    min-height: 0;
+    border-left: none;
+  }
+
+  .ws-mobile-tabs {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: var(--pw-surface);
+    border-top: 1px solid var(--pw-border);
+    z-index: 100;
+  }
+
+  .ws-mobile-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-family: var(--pw-font-data);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--pw-text-muted);
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+
+  .ws-mobile-tab.active {
+    color: var(--pw-red);
+  }
+
+  .ws-mobile-tab-icon {
+    font-size: 16px;
+  }
+}

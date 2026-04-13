@@ -1,5 +1,6 @@
-"""PitWall37 v3 — Race Engineering API + Live Bridge
+"""PitWall37 v3 — Race Engineering API + Live Bridge + Session Agent
 FastAPI server: data API, bridge WebSocket, engineer chat, live dashboard feed.
+The session agent runs a persistent agentic loop for the duration of each session.
 Frontend is served separately (see /app directory).
 """
 
@@ -10,13 +11,32 @@ import os
 import sqlite3
 import subprocess
 import time
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+from engineering_data import (
+    ensure_engineering_schema,
+    get_driver_model,
+    get_session_debrief,
+    get_taxonomy_summary,
+    grade_recommendation,
+    list_experiments,
+    list_recommendations,
+    list_session_events,
+    record_experiment,
+    record_recommendation,
+    record_session_event,
+)
+from session_agent import (
+    AgentActions,
+    get_active_agent,
+    start_session_agent,
+    stop_session_agent,
+)
 
 log = logging.getLogger("pitwall37")
 
@@ -26,6 +46,7 @@ TELEM_DIR = DATA_DIR / "telemetry"
 APP_DIR = Path(__file__).parent / "app" / "dist"
 
 app = FastAPI(title="PitWall37", version="3.0")
+ensure_engineering_schema(DB_PATH)
 
 # --- Bridge State (live connection to GPU box) ---
 
@@ -44,10 +65,67 @@ bridge_state = {
 dashboard_clients: set[WebSocket] = set()
 
 
+async def _stream_sdk_response(client, websocket: WebSocket):
+    """Forward Claude SDK raw messages to a websocket.
+
+    The SDK can emit control messages such as `rate_limit_event`. Treat them as
+    non-fatal and continue the turn.
+    """
+    while True:
+        raw = await client._query.receive_messages().__anext__()
+        msg_type = raw.get("type")
+
+        if msg_type == "assistant":
+            for block in raw.get("message", {}).get("content", []):
+                block_type = block.get("type")
+                if block_type == "text" and block.get("text"):
+                    await websocket.send_json({
+                        "type": "chunk",
+                        "content": block["text"],
+                    })
+                elif block_type == "tool_use":
+                    await websocket.send_json({
+                        "type": "tool_use",
+                        "tool": block.get("name"),
+                        "input": block.get("input"),
+                    })
+                elif block_type == "tool_result":
+                    await websocket.send_json({
+                        "type": "tool_result",
+                        "tool_use_id": block.get("tool_use_id"),
+                        "is_error": block.get("is_error") or False,
+                    })
+
+        elif msg_type == "result":
+            await websocket.send_json({
+                "type": "done",
+                "cost_usd": raw.get("total_cost_usd"),
+                "turns": raw.get("num_turns"),
+                "session_id": raw.get("session_id"),
+            })
+            return
+
+        elif msg_type in {"system", "stream_event", "rate_limit_event"}:
+            continue
+
+        else:
+            log.warning("Ignoring unknown Claude SDK message type: %s", msg_type)
+
+
 def get_db():
+    ensure_engineering_schema(DB_PATH)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+async def _ensure_session_agent() -> None:
+    """Start the session agent if not already running."""
+    agent = get_active_agent()
+    if agent and agent.is_running:
+        return
+    actions = AgentActions(db_path=DB_PATH)
+    await start_session_agent(actions=actions, db_path=DB_PATH)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -62,11 +140,14 @@ async def index():
 async def list_sessions():
     conn = get_db()
     rows = conn.execute("""
-        SELECT id, filename, car, track, track_config, track_length_km,
-               session_date, driver_name, total_laps, timed_laps,
-               best_lap_time, avg_lap_time, air_temp, track_temp
-        FROM sessions
-        ORDER BY session_date DESC
+        SELECT s.id, s.filename, s.car, s.track, s.track_config, s.track_length_km,
+               s.session_date, s.driver_name, s.total_laps, s.timed_laps,
+               s.best_lap_time, s.avg_lap_time, s.air_temp, s.track_temp
+        FROM sessions s
+        INNER JOIN laps l ON l.session_id = s.id
+        GROUP BY s.id
+        HAVING COUNT(l.lap_number) > 0
+        ORDER BY s.session_date DESC
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -235,6 +316,103 @@ async def get_stats():
     }
 
 
+@app.get("/api/recommendations")
+async def get_recommendations(
+    limit: int = 50,
+    track: str | None = None,
+    session_id: str | None = None,
+    status: str | None = None,
+    grade: str | None = None,
+):
+    return list_recommendations(
+        DB_PATH,
+        limit=limit,
+        track=track,
+        session_id=session_id,
+        status=status,
+        grade=grade,
+    )
+
+
+@app.post("/api/recommendations")
+async def create_recommendation(body: dict):
+    try:
+        return record_recommendation(body, DB_PATH)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/recommendations/{recommendation_id}/grade")
+async def update_recommendation_grade(recommendation_id: int, body: dict):
+    try:
+        result = grade_recommendation(recommendation_id, body, DB_PATH)
+        if not result:
+            return JSONResponse({"error": "Recommendation not found"}, status_code=404)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.get("/api/experiments")
+async def get_experiments(
+    limit: int = 50,
+    track: str | None = None,
+    session_id: str | None = None,
+    result: str | None = None,
+):
+    return list_experiments(
+        DB_PATH,
+        limit=limit,
+        track=track,
+        session_id=session_id,
+        result=result,
+    )
+
+
+@app.post("/api/experiments")
+async def create_experiment(body: dict):
+    try:
+        return record_experiment(body, DB_PATH)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.get("/api/insights/driver-model")
+async def driver_model(track: str | None = None):
+    return get_driver_model(DB_PATH, track=track)
+
+
+@app.get("/api/insights/taxonomy")
+async def taxonomy_summary(track: str | None = None):
+    return get_taxonomy_summary(DB_PATH, track=track)
+
+
+@app.get("/api/events")
+async def get_events(
+    limit: int = 50,
+    track: str | None = None,
+    session_id: str | None = None,
+    event_type: str | None = None,
+    severity: str | None = None,
+):
+    return list_session_events(
+        DB_PATH,
+        limit=limit,
+        track=track,
+        session_id=session_id,
+        event_type=event_type,
+        severity=severity,
+    )
+
+
+@app.get("/api/sessions/{session_id}/debrief")
+async def session_debrief(session_id: str):
+    try:
+        return get_session_debrief(session_id, DB_PATH)
+    except ValueError:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+
 # --- Bridge API (GPU box status + commands) ---
 
 @app.get("/api/bridge/status")
@@ -311,17 +489,27 @@ async def broadcast_to_dashboards(msg: dict):
 
 @app.websocket("/ws/bridge")
 async def bridge_ws(websocket: WebSocket):
-    """WebSocket endpoint for the Windows bridge agent."""
+    """WebSocket endpoint for the Windows bridge agent.
+
+    All events are forwarded to the session agent's event queue.
+    The agent decides what's interesting and how to respond.
+    """
     await websocket.accept()
     bridge_state["connected"] = True
     bridge_state["ws"] = websocket
     log.info("Bridge connected from GPU box")
+
+    # Start the session agent
+    await _ensure_session_agent()
+    agent = get_active_agent()
 
     try:
         while True:
             raw = await websocket.receive_json()
             msg_type = raw.get("type", "")
             data = raw.get("data", {})
+
+            # --- Update bridge_state (fast, synchronous) ---
 
             if msg_type == "heartbeat":
                 bridge_state["last_heartbeat"] = raw.get("ts", time.time())
@@ -335,17 +523,10 @@ async def bridge_ws(websocket: WebSocket):
                 log.info(f"Session: {data.get('car')} @ {data.get('track')}")
                 await broadcast_to_dashboards({"type": "session_info", "data": data})
 
-            elif msg_type == "setup" or msg_type == "setup_change":
+            elif msg_type in ("setup", "setup_change"):
                 bridge_state["live_setup"] = data.get("setup", data)
-                update_count = data.get("setup", data).get("UpdateCount", "?")
-                log.info(f"Setup update (UpdateCount: {update_count})")
+                log.info(f"Setup update (UpdateCount: {data.get('setup', data).get('UpdateCount', '?')})")
                 await broadcast_to_dashboards({"type": "setup_update", "data": data})
-
-                # Proactive: analyze setup changes (only on actual changes, not initial load)
-                if msg_type == "setup_change":
-                    asyncio.create_task(_proactive_engineer("setup_change", {
-                        "update_count": update_count,
-                    }))
 
             elif msg_type == "telemetry":
                 bridge_state["last_telemetry"] = data
@@ -358,33 +539,6 @@ async def bridge_ws(websocket: WebSocket):
                 log.info(f"Lap {lap_num}: {lap_time:.3f}s")
                 await broadcast_to_dashboards({"type": "lap_complete", "data": data})
 
-                # --- Proactive engineer triggers ---
-                if lap_time > 0:
-                    # Track recent laps for pace degradation detection
-                    _recent_lap_times.append(lap_time)
-                    if len(_recent_lap_times) > 10:
-                        _recent_lap_times.pop(0)
-
-                    # Check for personal best
-                    global _last_proactive_lap
-                    if _last_proactive_lap != lap_num:
-                        _last_proactive_lap = lap_num
-
-                        # PB detection — compare against all previous laps this run
-                        if len(_recent_lap_times) >= 2 and lap_time <= min(_recent_lap_times[:-1]):
-                            asyncio.create_task(_proactive_engineer("personal_best", data))
-                        # Pace degradation — 3+ laps each slower than the last
-                        elif (len(_recent_lap_times) >= 3 and
-                              _recent_lap_times[-1] > _recent_lap_times[-2] > _recent_lap_times[-3]):
-                            asyncio.create_task(_proactive_engineer("pace_degradation", data))
-
-                    # Fuel warning — below 15%
-                    fuel_pct = bridge_state.get("last_telemetry", {}).get("fuel_pct")
-                    if fuel_pct is not None and fuel_pct < 0.15:
-                        asyncio.create_task(_proactive_engineer("fuel_warning", {
-                            "fuel_level": data.get("fuel_level", 0),
-                        }))
-
             elif msg_type == "state":
                 event = data.get("event", "")
                 log.info(f"State: {event}")
@@ -392,6 +546,11 @@ async def bridge_ws(websocket: WebSocket):
 
             elif msg_type == "bridge_connect":
                 log.info(f"Bridge v{data.get('version')} from {data.get('hostname')}")
+
+            # --- Forward ALL events to the session agent ---
+            # The agent decides what's interesting. We don't filter here.
+            if agent and agent.is_running:
+                await agent.push_event({"type": msg_type, "data": data, "ts": raw.get("ts", time.time())})
 
     except WebSocketDisconnect:
         log.info("Bridge disconnected")
@@ -401,6 +560,12 @@ async def bridge_ws(websocket: WebSocket):
         bridge_state["connected"] = False
         bridge_state["iracing_connected"] = False
         bridge_state["ws"] = None
+
+        # Stop the session agent and get final debrief
+        debrief = await stop_session_agent()
+        if debrief:
+            log.info("Session agent final debrief generated (%d chars)", len(debrief))
+
         await broadcast_to_dashboards({"type": "bridge_disconnected"})
 
 
@@ -448,77 +613,82 @@ async def live_dashboard(websocket: WebSocket):
         dashboard_clients.discard(websocket)
 
 
-# --- WebSocket for Engineer Chat ---
+# --- WebSocket for Engineer Chat (Claude Code SDK) ---
 
 @app.websocket("/ws/engineer")
 async def engineer_chat(websocket: WebSocket):
     await websocket.accept()
     try:
-        from engineer import RaceAgent
-        agent = RaceAgent(bridge_state_ref=bridge_state)
+        from claude_code_sdk import ClaudeSDKClient
+        from race_agent import build_agent_options, set_bridge_state
 
-        while True:
-            data = await websocket.receive_json()
-            msg = data.get("message", "")
-            context = data.get("context", {})
+        # Give race agent access to live bridge data
+        set_bridge_state(bridge_state)
+        options = build_agent_options()
 
-            # Inject server-side bridge state if frontend didn't provide it
-            if not context.get("session") and bridge_state.get("session_info"):
-                context["session"] = bridge_state["session_info"]
-            if not context.get("setup") and bridge_state.get("live_setup"):
-                context["setup"] = bridge_state["live_setup"]
-            if not context.get("telemetry") and bridge_state.get("last_telemetry"):
-                context["telemetry"] = bridge_state["last_telemetry"]
+        async with ClaudeSDKClient(options=options) as client:
+            while True:
+                data = await websocket.receive_json()
+                msg = data.get("message", "")
+                context = data.get("context", {})
 
-            # Stream response — agent may call tools multiple times
-            async for chunk in agent.respond(msg, context):
-                await websocket.send_json({"type": "chunk", "content": chunk})
-            await websocket.send_json({"type": "done"})
+                # Build context prefix from live data
+                context_parts = []
+                session = context.get("session") or bridge_state.get("session_info")
+                if session:
+                    context_parts.append(f"[Live: {session.get('car', '?')} @ {session.get('track', '?')}]")
+                telem = context.get("telemetry") or bridge_state.get("last_telemetry")
+                if telem:
+                    speed = (telem.get("speed") or 0) * 3.6
+                    context_parts.append(f"[Telemetry: {speed:.0f}km/h Lap:{telem.get('lap', 0)} Fuel:{telem.get('fuel_level', 0):.1f}L]")
+                recent_laps = context.get("recent_laps")
+                if recent_laps:
+                    lap_strs = []
+                    for l in recent_laps[:5]:
+                        t = f"{l['time']:.3f}s" if l.get('time') and l['time'] > 0 else "?"
+                        d = f" ({l['delta']:+.3f})" if l.get('delta') is not None else ""
+                        lap_strs.append(f"L{l.get('lap', '?')}:{t}{d}")
+                    context_parts.append(f"[Recent laps: {', '.join(lap_strs)}]")
+
+                full_message = msg
+                if context_parts:
+                    full_message = "\n".join(context_parts) + "\n\n" + msg
+
+                await client.query(full_message)
+                await _stream_sdk_response(client, websocket)
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        log.error(f"Engineer error: {e}")
+        log.error(f"Engineer error: {e}", exc_info=True)
         try:
             await websocket.send_json({"type": "error", "content": str(e)})
         except Exception:
             pass
 
 
-# --- Proactive Race Engineer ---
+# --- Session Agent API ---
 
-_race_agent = None
-_last_proactive_lap = -1
-_recent_lap_times = []
-
-
-def _get_race_agent():
-    """Get or create the shared race agent for proactive monitoring."""
-    global _race_agent
-    if _race_agent is None:
-        from engineer import RaceAgent
-        _race_agent = RaceAgent(bridge_state_ref=bridge_state)
-    return _race_agent
-
-
-async def _proactive_engineer(event_type: str, event_data: dict):
-    """Fire proactive analysis and broadcast to dashboard clients."""
-    try:
-        agent = _get_race_agent()
-        text = await agent.proactive_analysis(event_type, event_data)
-        if text:
-            await broadcast_to_dashboards({
-                "type": "engineer_proactive",
-                "data": {
-                    "role": "ENGINEER",
-                    "text": text,
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "event": event_type,
-                    "streaming": False,
-                },
-            })
-    except Exception as e:
-        log.error(f"Proactive engineer error: {e}")
+@app.get("/api/session-agent/status")
+async def session_agent_status():
+    """Get the current session agent status."""
+    agent = get_active_agent()
+    if not agent or not agent.is_running:
+        return {"active": False}
+    state = agent.state
+    return {
+        "active": True,
+        "car": state.car,
+        "track": state.track,
+        "total_laps": len(state.laps),
+        "valid_laps": state.total_valid_laps,
+        "session_best": state.session_best,
+        "track_pb": state.track_pb,
+        "pace_trend": state.pace_trend,
+        "consistency": state.consistency,
+        "total_agent_calls": state.total_agent_calls,
+        "notes": [{"lap": n.lap, "note": n.note, "category": n.category} for n in state.notes[-10:]],
+    }
 
 
 # --- Static files (built frontend) ---

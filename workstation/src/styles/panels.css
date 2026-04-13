@@ -1,0 +1,107 @@
+/* === Panel Shell === */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 32px;
+  min-height: 32px;
+  background: var(--pw-surface);
+  border-bottom: 1px solid var(--pw-border);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-family: var(--pw-font-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pw-text-dim);
+  white-space: nowrap;
+}
+
+.panel-header-spacer {
+  flex: 1;
+}
+
+.panel-badge {
+  font-family: var(--pw-font-data);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--pw-surface-3);
+  color: var(--pw-text-muted);
+  letter-spacing: 0.05em;
+}
+
+.panel-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--pw-text-muted);
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.panel-btn:hover {
+  background: var(--pw-surface-3);
+  color: var(--pw-text-dim);
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+}
+
+.panel-empty-label {
+  font-family: var(--pw-font-data);
+  font-size: 11px;
+  color: var(--pw-text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.panel-empty-hint {
+  font-size: 12px;
+  color: var(--pw-text-muted);
+  text-align: center;
+}
+
+/* Minimized panel — hides body and footer, keeps header */
+.panel.panel--minimized {
+  flex: none;
+  height: 32px;
+  min-height: 32px;
+}
+
+.panel.panel--minimized .panel-body,
+.panel.panel--minimized .panel-footer {
+  display: none;
+}
+
+.panel.panel--minimized .panel-header {
+  border-bottom: none;
+}
